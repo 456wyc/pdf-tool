@@ -348,8 +348,18 @@ const renderPages = async () => {
       currentContainer.scrollIntoView({ behavior: 'instant', block: 'start' })
     }
   } else {
-    // 单页模式保持不变
-    // ...现有的单页模式代码...
+    // 单页模式：只渲染当前页面
+    const pageContainer = document.createElement('div')
+    pageContainer.className = 'page-placeholder'
+    pageContainer.dataset.pageIndex = currentPage.value
+    
+    const canvas = document.createElement('canvas')
+    canvas.className = 'page-canvas'
+    pageContainer.appendChild(canvas)
+    container.appendChild(pageContainer)
+    
+    // 立即渲染当前页面
+    await renderPageContent(currentPage.value, pageContainer)
   }
 }
 
@@ -367,7 +377,7 @@ const renderPageContent = async (pageIndex, container) => {
   // 获取页面的旋转角度
   const rotation = page.rotate || 0
   // 考虑旋转角度创建视口
-  const viewport = page.getViewport({ scale: currentScale.value, rotation: rotation })
+  const viewport = page.getViewport({ scale: currentScale.value, rotation: -rotation })
 
   canvas.width = viewport.width
   canvas.height = viewport.height
@@ -396,6 +406,7 @@ const renderPage = async (pageIndex) => {
   }).promise
 }
 
+// 修改 selectPage 函数
 const selectPage = async (index) => {
   currentPage.value = index
 
@@ -405,12 +416,12 @@ const selectPage = async (index) => {
     const targetCanvas = container?.children[index]
     if (targetCanvas) {
       isScrolling = true
-      targetCanvas.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      targetCanvas.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
       setTimeout(() => { isScrolling = false }, 1000)
     }
   } else {
-    // 单页模式下重新渲染页面
-    renderPages()
+    // 单页模式下，直接重新渲染页面
+    await renderPages()
   }
 }
 
