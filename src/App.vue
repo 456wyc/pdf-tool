@@ -304,7 +304,17 @@ const renderPages = async () => {
 
 const selectPage = (index) => {
   currentPage.value = index
-  renderPage(index)
+  if (continuousScroll.value) {
+    // 连续滚动模式下，滚动到对应页面
+    const container = document.querySelector('.viewer')
+    const targetCanvas = document.querySelector(`.pages-container canvas:nth-child(${index + 1})`)
+    if (container && targetCanvas) {
+      targetCanvas.scrollIntoView({ behavior: 'smooth' })
+    }
+  } else {
+    // 单页模式下，重新渲染页面
+    renderPages()
+  }
 }
 
 watch(continuousScroll, () => {
