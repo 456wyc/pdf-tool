@@ -31,7 +31,7 @@
           </n-button>
         </n-space>
       </n-layout-header>
-      <n-layout position="absolute" style="top: 64px; bottom: 64px;" bordered has-sider>
+      <n-layout position="absolute" style="top: 64px;" bordered has-sider>
         <n-layout-sider id="pages" content-style="padding: 24px;" :native-scrollbar="false" bordered
           collapse-mode="width" :collapsed-width="120" :width="200" @scroll="handleThumbnailScroll">
           <div v-if="pagesData.length" class="thumbnails" ref="thumbnailsRef">
@@ -43,76 +43,72 @@
             </div>
           </div>
         </n-layout-sider>
-        <n-layout id="content" content-style="padding: 24px;" :native-scrollbar="false" bordered>
-          <div v-if="currentPdf" class="viewer">
-            <div class="pages-container"></div>
-          </div>
-          <div v-else class="empty-state">
-            <n-empty description="请选择PDF文件">
-              <template #extra>
-                <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
-                  <n-button>选择文件</n-button>
-                </n-upload>
-              </template>
-            </n-empty>
-          </div>
+        <n-layout>
+          <n-layout id="content" content-style="padding: 0;" :native-scrollbar="false" bordered>
+            <div v-if="currentPdf" class="viewer">
+              <div class="pages-container"></div>
+            </div>
+            <div v-else class="empty-state">
+              <n-empty description="请选择PDF文件">
+                <template #extra>
+                  <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
+                    <n-button>选择文件</n-button>
+                  </n-upload>
+                </template>
+              </n-empty>
+            </div>
+          </n-layout>
+
+          <!-- 修改页脚布局 -->
+          <n-layout-footer position="absolute" style="height: 64px; padding: 24px" bordered>
+            <!-- 使用flex布局实现居中 -->
+            <div class="footer-container">
+              <n-space :size="48" justify="center" align="center">
+                <!-- 连续滚动开关 -->
+                <n-switch v-model:value="continuousScroll">
+                  <template #checked>连续滚动</template>
+                  <template #unchecked>单页显示</template>
+                </n-switch>
+
+                <!-- 翻页控制组 -->
+                <n-space v-if="currentPdf" align="center">
+                  <n-button ghost :disabled="currentPage <= 0" @click="prevPage">
+                    <template #icon>
+                      <n-icon><arrow-left-icon /></n-icon>
+                    </template>
+                  </n-button>
+                  <n-input-number v-model:value="displayPage" :min="1" :max="pagesData.length"
+                    :style="{ width: '80px' }" @update:value="handlePageChange" />
+                  <span>/ {{ pagesData.length }}</span>
+                  <n-button ghost :disabled="currentPage >= pagesData.length - 1" @click="nextPage">
+                    <template #icon>
+                      <n-icon><arrow-right-icon /></n-icon>
+                    </template>
+                  </n-button>
+                </n-space>
+
+                <!-- 缩放控制组 -->
+                <n-button-group v-if="currentPdf">
+                  <n-button ghost @click="zoomIn">
+                    <template #icon>
+                      <n-icon><zoom-in-icon /></n-icon>
+                    </template>
+                  </n-button>
+                  <n-button ghost @click="zoomOut">
+                    <template #icon>
+                      <n-icon><zoom-out-icon /></n-icon>
+                    </template>
+                  </n-button>
+                  <n-dropdown :options="scaleOptions" @select="handleScaleSelect">
+                    <n-button ghost>{{ Math.round(currentScale * 100) }}%</n-button>
+                  </n-dropdown>
+                </n-button-group>
+              </n-space>
+            </div>
+          </n-layout-footer>
         </n-layout>
+
       </n-layout>
-      <!-- 修改页脚布局 -->
-      <n-layout-footer position="absolute" style="height: 64px; padding: 24px" bordered>
-        <n-space justify="center" align="center" style="height: 100%">
-          <!-- 连续滚动开关 -->
-          <n-switch v-model:value="continuousScroll">
-            <template #checked>连续滚动</template>
-            <template #unchecked>单页显示</template>
-          </n-switch>
-          
-          <!-- 添加间隔 -->
-          <div style="width: 48px"></div>
-          
-          <!-- 翻页控制组 -->
-          <n-space v-if="currentPdf" align="center">
-            <n-button ghost :disabled="currentPage <= 0" @click="prevPage">
-              <template #icon>
-                <n-icon><arrow-left-icon /></n-icon>
-              </template>
-            </n-button>
-            <n-input-number 
-              v-model:value="displayPage" 
-              :min="1" 
-              :max="pagesData.length" 
-              :style="{ width: '80px' }" 
-              @update:value="handlePageChange"
-            />
-            <span>/ {{ pagesData.length }}</span>
-            <n-button ghost :disabled="currentPage >= pagesData.length - 1" @click="nextPage">
-              <template #icon>
-                <n-icon><arrow-right-icon /></n-icon>
-              </template>
-            </n-button>
-          </n-space>
-  
-          <!-- 添加间隔 -->
-          <div style="width: 48px"></div>
-          
-          <!-- 缩放控制组 -->
-          <n-button-group v-if="currentPdf">
-            <n-button ghost @click="zoomIn">
-              <template #icon>
-                <n-icon><zoom-in-icon /></n-icon>
-              </template>
-            </n-button>
-            <n-button ghost @click="zoomOut">
-              <template #icon>
-                <n-icon><zoom-out-icon /></n-icon>
-              </template>
-            </n-button>
-            <n-dropdown :options="scaleOptions" @select="handleScaleSelect">
-              <n-button ghost>{{ Math.round(currentScale * 100) }}%</n-button>
-            </n-dropdown>
-          </n-button-group>
-        </n-space>
-      </n-layout-footer>
     </n-layout>
   </div>
   <n-modal v-model:show="showCreatePageModal" preset="card" title="新建空白页面" style="width: 400px">
@@ -590,7 +586,7 @@ const handlePageChange = (pageNumber) => {
   if (!pageNumber) return
   const newPage = Math.max(1, Math.min(pageNumber, pagesData.value.length)) - 1
   currentPage.value = newPage
-  
+
   if (continuousScroll.value) {
     // 连续滚动模式下，滚动到对应页面
     const container = document.querySelector('.pages-container')
@@ -720,6 +716,13 @@ watch(currentPage, (newPage) => {
 }
 
 .empty-state {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.footer-container {
   height: 100%;
   display: flex;
   justify-content: center;
