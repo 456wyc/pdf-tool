@@ -26,6 +26,10 @@
           <n-button ghost :disabled="!currentPdf">删除当前页面</n-button>
           <n-button ghost :disabled="!currentPdf">插入图片</n-button>
           <n-button ghost :disabled="!currentPdf">旋转当前页面</n-button>
+          <n-switch v-model:value="continuousScroll">
+            <template #checked>连续滚动</template>
+            <template #unchecked>单页显示</template>
+          </n-switch>
         </n-space>
       </n-layout-header>
       <n-layout position="absolute" style="top: 64px; bottom: 64px;" bordered has-sider>
@@ -41,7 +45,7 @@
         </n-layout-sider>
         <n-layout id="content" content-style="padding: 24px;" :native-scrollbar="false" bordered>
           <div v-if="currentPdf" class="viewer">
-            <canvas ref="mainCanvas"></canvas>
+            <div class="pages-container"></div>
           </div>
           <div v-else class="empty-state">
             <n-empty description="请选择PDF文件">
@@ -67,9 +71,9 @@ import {
   NLayoutSider,
   NLayoutContent,
   NLayoutFooter,
-  NButton, NSpace, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon
+  NButton, NSpace, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon, NSwitch
 } from 'naive-ui'
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, watch } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
 import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon } from '@vicons/carbon'
 
@@ -102,6 +106,9 @@ const scaleOptions = [
   { label: '150%', key: '150' },
   { label: '200%', key: '200' },
 ]
+
+const continuousScroll = ref(true)
+const pagesCanvasRefs = ref({})
 
 const zoomIn = () => {
   currentScale.value = Math.min(currentScale.value * 1.2, 5)
@@ -214,10 +221,61 @@ const renderPage = async (pageIndex) => {
   }).promise
 }
 
+const renderPages = async () => {
+  if (!currentPdf.value) return
+  
+  const container = document.querySelector('.pages-container')
+  if (!container) return
+
+  // 清空现有内容
+  container.innerHTML = ''
+  
+  if (continuousScroll.value) {
+    // 连续滚动模式：渲染所有页面
+    for (let i = 0; i < currDoc.numPages; i++) {
+      const canvas = document.createElement('canvas')
+      canvas.className = 'page-canvas'
+      container.appendChild(canvas)
+      pagesCanvasRefs.value[i] = canvas
+      
+      const page = await currDoc.getPage(i + 1)
+      const viewport = page.getViewport({ scale: currentScale.value })
+      
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+      
+      await page.render({
+        canvasContext: canvas.getContext('2d'),
+        viewport
+      }).promise
+    }
+  } else {
+    // 单页模式：只渲染当前页
+    const canvas = document.createElement('canvas')
+    canvas.className = 'page-canvas'
+    container.appendChild(canvas)
+    
+    const page = await currDoc.getPage(currentPage.value + 1)
+    const viewport = page.getViewport({ scale: currentScale.value })
+    
+    canvas.width = viewport.width
+    canvas.height = viewport.height
+    
+    await page.render({
+      canvasContext: canvas.getContext('2d'),
+      viewport
+    }).promise
+  }
+}
+
 const selectPage = (index) => {
   currentPage.value = index
   renderPage(index)
 }
+
+watch(continuousScroll, () => {
+  renderPages()
+})
 
 onMounted(() => {
   const resizeObserver = new ResizeObserver(entries => {
@@ -239,26 +297,48 @@ onMounted(() => {
 .thumbnails {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 
   .thumbnail {
     cursor: pointer;
-    padding: 5px;
-    border: 2px solid transparent;
+    padding: 12px;
+    border-radius: 4px;
+    background-color: white;
+    border: 1px solid #e5e5e5;
+    box-shadow: 
+      0 1px 3px rgba(0, 0, 0, 0.1),
+      0 2px 4px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 
+        0 2px 4px rgba(0, 0, 0, 0.12),
+        0 4px 6px rgba(0, 0, 0, 0.07),
+        0 8px 16px rgba(0, 0, 0, 0.05);
+    }
 
     &.active {
       border-color: #18a058;
+      box-shadow: 
+        0 0 0 2px rgba(24, 160, 88, 0.2),
+        0 2px 4px rgba(0, 0, 0, 0.12),
+        0 4px 8px rgba(0, 0, 0, 0.08);
     }
 
     canvas {
       width: 100%;
       height: auto;
+      border-radius: 2px;
+      background-color: white;
     }
 
     .page-number {
       text-align: center;
-      margin-top: 5px;
+      margin-top: 8px;
       font-size: 12px;
+      color: #666;
+      font-weight: 500;
     }
   }
 }
@@ -270,11 +350,36 @@ onMounted(() => {
   height: 100%;
   overflow: auto;
   padding: 20px;
+  background-color: #f5f5f5;
 
-  canvas {
-    max-width: 100%;
-    height: auto;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  .pages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+    width: fit-content;
+    
+    canvas {
+      max-width: 100%;
+      height: auto;
+      padding: 20px;
+      background-color: white;
+      border: 1px solid #e5e5e5;
+      border-radius: 4px;
+      box-shadow: 
+        0 1px 3px rgba(0, 0, 0, 0.1),
+        0 4px 6px rgba(0, 0, 0, 0.05),
+        0 10px 20px rgba(0, 0, 0, 0.04);
+      transition: transform 0.2s, box-shadow 0.2s;
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 
+          0 2px 4px rgba(0, 0, 0, 0.12),
+          0 6px 8px rgba(0, 0, 0, 0.07),
+          0 12px 24px rgba(0, 0, 0, 0.05);
+      }
+    }
   }
 }
 
