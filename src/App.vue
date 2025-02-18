@@ -30,6 +30,12 @@
             <template #checked>连续滚动</template>
             <template #unchecked>单页显示</template>
           </n-switch>
+          <n-button ghost @click="showCreatePageModal = true" :disabled="!currentPdf">
+            <template #icon>
+              <n-icon><add-icon /></n-icon>
+            </template>
+            新建空白页
+          </n-button>
         </n-space>
       </n-layout-header>
       <n-layout position="absolute" style="top: 64px; bottom: 64px;" bordered has-sider>
@@ -63,6 +69,33 @@
       </n-layout-footer>
     </n-layout>
   </div>
+  <n-modal v-model:show="showCreatePageModal" preset="card" title="新建空白页面" style="width: 400px">
+    <n-form ref="formRef" :model="formValue" :rules="rules">
+      <n-form-item label="插入位置" path="position">
+        <n-radio-group v-model:value="formValue.position">
+          <n-radio key="before" value="before">在当前页前</n-radio>
+          <n-radio key="after" value="after">在当前页后</n-radio>
+        </n-radio-group>
+      </n-form-item>
+      <n-form-item label="页面方向" path="orientation">
+        <n-radio-group v-model:value="formValue.orientation">
+          <n-radio key="portrait" value="portrait">纵向</n-radio>
+          <n-radio key="landscape" value="landscape">横向</n-radio>
+        </n-radio-group>
+      </n-form-item>
+      <n-form-item label="页面大小" path="pageSize">
+        <n-select v-model:value="formValue.pageSize" :options="pageSizeOptions" />
+      </n-form-item>
+    </n-form>
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="showCreatePageModal = false">取消</n-button>
+        <n-button type="primary" @click="handleCreatePage" :loading="creating">
+          确定
+        </n-button>
+      </n-space>
+    </template>
+  </n-modal>
 </template>
 <script setup>
 import {
@@ -71,11 +104,12 @@ import {
   NLayoutSider,
   NLayoutContent,
   NLayoutFooter,
-  NButton, NSpace, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon, NSwitch
+  NButton, NSpace, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon, NSwitch, NModal, NForm, NFormItem, NRadioGroup, NRadio, NSelect
 } from 'naive-ui'
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, onMounted, nextTick, watch, reactive } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
-import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon } from '@vicons/carbon'
+import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Add as AddIcon } from '@vicons/carbon'
+import { PDFDocument, PageSizes } from 'pdf-lib'
 
 console.log('pdfjsLib', pdfjsLib.version)
 
@@ -290,6 +324,102 @@ onMounted(() => {
     resizeObserver.observe(container)
   }
 })
+
+// 新增状态
+const showCreatePageModal = ref(false)
+const creating = ref(false)
+const formRef = ref(null)
+
+// 表单数据
+const formValue = reactive({
+  position: 'after',
+  orientation: 'portrait',
+  pageSize: 'A4'
+})
+
+// 页面大小选项
+const pageSizeOptions = [
+  { label: 'A3', value: 'A3' },
+  { label: 'A4', value: 'A4' },
+  { label: 'A5', value: 'A5' },
+  { label: 'Letter', value: 'Letter' },
+  { label: 'Legal', value: 'Legal' }
+]
+
+// 表单验证规则
+const rules = {
+  position: {
+    required: true,
+    message: '请选择插入位置'
+  },
+  orientation: {
+    required: true,
+    message: '请选择页面方向'
+  },
+  pageSize: {
+    required: true,
+    message: '请选择页面大小'
+  }
+}
+
+// 处理创建空白页面
+const handleCreatePage = async () => {
+  if (!currDoc) return
+  
+  try {
+    creating.value = true
+    
+    // 先获取当前文档的二进制数据
+    const existingPdfBytes = await currentPdf.value.getData()
+    
+    // 使用 pdf-lib 加载当前文档
+    const pdfDoc = await PDFDocument.load(existingPdfBytes)
+    
+    // 获取页面尺寸
+    let pageSize = PageSizes[formValue.pageSize]
+    if (formValue.orientation === 'landscape') {
+      pageSize = [pageSize[1], pageSize[0]] // 交换宽高实现横向
+    }
+    
+    // 在指定位置插入空白页
+    const insertIndex = formValue.position === 'before' ? 
+      currentPage.value : 
+      currentPage.value + 1
+    
+    pdfDoc.insertPage(insertIndex, pageSize)
+    
+    // 保存修改后的文档
+    const modifiedPdfBytes = await pdfDoc.save()
+    
+    // 重新加载修改后的文档
+    const loadingTask = pdfjsLib.getDocument({ data: modifiedPdfBytes })
+    const newPdfDoc = await loadingTask.promise
+    
+    // 更新当前文档
+    currentPdf.value = newPdfDoc
+    currDoc = newPdfDoc
+    pagesData.value = Array(newPdfDoc.numPages).fill(null)
+    
+    // 重新渲染所有页面
+    await nextTick()
+    for (let i = 0; i < newPdfDoc.numPages; i++) {
+      await renderThumbnail(i)
+    }
+    
+    // 如果是连续滚动模式，重新渲染主视图
+    if (continuousScroll.value) {
+      renderPages()
+    } else {
+      renderPage(currentPage.value)
+    }
+    
+    showCreatePageModal.value = false
+  } catch (error) {
+    console.error('创建空白页面时发生错误:', error)
+  } finally {
+    creating.value = false
+  }
+}
 </script>
 
 
