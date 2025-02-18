@@ -363,7 +363,16 @@ const renderPages = async () => {
 const selectPage = async (index) => {
   currentPage.value = index
 
-  if (!continuousScroll.value) {
+  if (continuousScroll.value) {
+    // 连续滚动模式下，滚动到对应页面
+    const container = document.querySelector('.pages-container')
+    const targetCanvas = container?.children[index]
+    if (targetCanvas) {
+      isScrolling = true
+      targetCanvas.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setTimeout(() => { isScrolling = false }, 1000)
+    }
+  } else {
     // 单页模式下重新渲染页面
     renderPages()
   }
