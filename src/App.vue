@@ -36,6 +36,12 @@
             </template>
             新建空白页
           </n-button>
+          <n-button ghost :disabled="!currentPdf" @click="handleSaveFile">
+            <template #icon>
+              <n-icon><save-icon /></n-icon>
+            </template>
+            保存文件
+          </n-button>
         </n-space>
       </n-layout-header>
       <n-layout position="absolute" style="top: 64px; bottom: 64px;" bordered has-sider>
@@ -109,7 +115,7 @@ import {
 } from 'naive-ui'
 import { ref, onMounted, nextTick, watch, reactive } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
-import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Add as AddIcon } from '@vicons/carbon'
+import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Add as AddIcon, Save as SaveIcon } from '@vicons/carbon'
 import { PDFDocument, PageSizes } from 'pdf-lib'
 
 console.log('pdfjsLib', pdfjsLib.version)
@@ -497,6 +503,39 @@ let isScrolling = false
 const handleThumbnailScroll = (e) => {
   // 移除整个函数内容，因为我们不需要缩略图滚动时影响大图
   // 如果将来需要记录当前可见缩略图，可以保留计算逻辑但不触发页面切换
+}
+
+// 处理保存文件
+const handleSaveFile = async () => {
+  if (!currDoc) return
+  
+  try {
+    // 获取当前文档的二进制数据
+    const existingPdfBytes = await currentPdf.value.getData()
+    
+    // 创建 Blob 对象
+    const blob = new Blob([existingPdfBytes], { type: 'application/pdf' })
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    
+    // 设置默认文件名
+    const now = new Date()
+    const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`
+    link.download = `modified_${timestamp}.pdf`
+    
+    // 触发下载
+    document.body.appendChild(link)
+    link.click()
+    
+    // 清理
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(link)
+  } catch (error) {
+    console.error('保存文件时发生错误:', error)
+  }
 }
 </script>
 
