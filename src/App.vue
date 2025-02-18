@@ -170,7 +170,7 @@ import {
   NLayoutFooter,
   NButton, NSpace, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon, NSwitch, NModal, NForm, NFormItem, NRadioGroup, NRadio, NSelect, NInputNumber
 } from 'naive-ui'
-import { ref, onMounted, nextTick, watch, reactive, computed } from 'vue'
+import { ref, onMounted, nextTick, watch, reactive, computed, onUnmounted } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
 import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Add as AddIcon, Save as SaveIcon, ArrowLeft as ArrowLeftIcon, ArrowRight as ArrowRightIcon, DocumentPdf as PdfIcon, TrashCan as DeleteIcon, Image as ImageIcon, Rotate as RotateIcon } from '@vicons/carbon'
 import { PDFDocument, PageSizes } from 'pdf-lib'
@@ -282,6 +282,13 @@ const handleFileChange = async ({ file }) => {
   }
 
   reader.readAsArrayBuffer(file.file)
+
+  // 初始化观察器
+  initObservers()
+  
+  // 渲染缩略图和主视图
+  await renderThumbnails()
+  await renderPages()
 }
 
 const renderThumbnail = async (pageIndex) => {
@@ -308,6 +315,71 @@ const renderThumbnail = async (pageIndex) => {
   }).promise
 }
 
+// 修改 renderPages 函数
+const renderPages = async () => {
+  if (!currentPdf.value) return
+
+  const container = document.querySelector('.pages-container')
+  if (!container) return
+
+  // 清空现有内容
+  container.innerHTML = ''
+
+  if (continuousScroll.value) {
+    // 连续滚动模式：先创建所有占位符
+    for (let i = 0; i < currDoc.numPages; i++) {
+      const pageContainer = document.createElement('div')
+      pageContainer.className = 'page-placeholder'
+      pageContainer.dataset.pageIndex = i
+      
+      const canvas = document.createElement('canvas')
+      canvas.className = 'page-canvas'
+      pageContainer.appendChild(canvas)
+      container.appendChild(pageContainer)
+
+      // 观察每个页面容器
+      pageObserver.value?.observe(pageContainer)
+    }
+
+    // 立即渲染当前页面
+    const currentContainer = container.children[currentPage.value]
+    if (currentContainer) {
+      await renderPageContent(currentPage.value, currentContainer)
+      currentContainer.scrollIntoView({ behavior: 'instant', block: 'start' })
+    }
+  } else {
+    // 单页模式保持不变
+    // ...现有的单页模式代码...
+  }
+}
+
+// 修改 renderPageContent 函数
+const renderPageContent = async (pageIndex, container) => {
+  if (!currDoc) return
+  
+  // 如果已经渲染过，就跳过
+  if (container.dataset.rendered === 'true') return
+  
+  const canvas = container.querySelector('canvas')
+  if (!canvas) return
+
+  const page = await currDoc.getPage(pageIndex + 1)
+  // 获取页面的旋转角度
+  const rotation = page.rotate || 0
+  // 考虑旋转角度创建视口
+  const viewport = page.getViewport({ scale: currentScale.value, rotation: rotation })
+
+  canvas.width = viewport.width
+  canvas.height = viewport.height
+
+  await page.render({
+    canvasContext: canvas.getContext('2d'),
+    viewport
+  }).promise
+
+  container.dataset.rendered = 'true'
+}
+
 const renderPage = async (pageIndex) => {
   if (!currentPdf.value || !mainCanvas.value) return
 
@@ -322,64 +394,6 @@ const renderPage = async (pageIndex) => {
     canvasContext: canvas.getContext('2d'),
     viewport
   }).promise
-}
-
-const renderPages = async () => {
-  if (!currentPdf.value) return
-
-  const container = document.querySelector('.pages-container')
-  if (!container) return
-
-  // 清空现有内容
-  container.innerHTML = ''
-
-  if (continuousScroll.value) {
-    // 连续滚动模式：渲染所有页面
-    for (let i = 0; i < currDoc.numPages; i++) {
-      const canvas = document.createElement('canvas')
-      canvas.className = 'page-canvas'
-      container.appendChild(canvas)
-      pagesCanvasRefs.value[i] = canvas
-
-      const page = await currDoc.getPage(i + 1)
-      const viewport = page.getViewport({ scale: currentScale.value })
-
-      canvas.width = viewport.width
-      canvas.height = viewport.height
-
-      await page.render({
-        canvasContext: canvas.getContext('2d'),
-        viewport
-      }).promise
-    }
-
-    // 在渲染完成后滚动到当前页面
-    nextTick(() => {
-      const targetCanvas = container.children[currentPage.value]
-      if (targetCanvas) {
-        isScrolling = true
-        targetCanvas.scrollIntoView({ behavior: 'instant', block: 'start' })
-        setTimeout(() => { isScrolling = false }, 100)
-      }
-    })
-  } else {
-    // 单页模式：只渲染当前页
-    const canvas = document.createElement('canvas')
-    canvas.className = 'page-canvas'
-    container.appendChild(canvas)
-    mainCanvas.value = canvas // 添加这行，更新 mainCanvas 引用
-
-    const page = await currDoc.getPage(currentPage.value + 1)
-    const viewport = page.getViewport({ scale: currentScale.value })
-
-    canvas.width = viewport.width
-    canvas.height = viewport.height
-
-    await page.render({
-      canvasContext: canvas.getContext('2d'),
-      viewport
-    }).promise
-  }
 }
 
 const selectPage = async (index) => {
@@ -651,6 +665,106 @@ watch(currentPage, (newPage) => {
     renderPages()
   }
 })
+
+// 添加观察器
+const pageObserver = ref(null)
+const thumbnailObserver = ref(null)
+
+// 初始化观察器
+const initObservers = () => {
+  // 主视图观察器
+  pageObserver.value = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const pageIndex = parseInt(entry.target.dataset.pageIndex)
+        renderPageContent(pageIndex, entry.target)
+      }
+    })
+  }, {
+    root: document.querySelector('.viewer'),
+    rootMargin: '100px 0px'  // 提前 100px 开始加载
+  })
+
+  // 缩略图观察器
+  thumbnailObserver.value = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const pageIndex = parseInt(entry.target.dataset.pageIndex)
+        renderThumbnailContent(pageIndex, entry.target.querySelector('canvas'))
+      }
+    })
+  }, {
+    root: document.querySelector('.thumbnails'),
+    rootMargin: '50px 0px'
+  })
+}
+
+// 修改缩略图渲染相关函数
+const renderThumbnails = async () => {
+  const container = thumbnailsRef.value
+  if (!container) return
+
+  // 清空现有内容
+  container.innerHTML = ''
+
+  // 创建所有缩略图占位符
+  for (let i = 0; i < currDoc.numPages; i++) {
+    const thumbnail = document.createElement('div')
+    thumbnail.className = 'thumbnail'
+    thumbnail.dataset.pageIndex = i
+    thumbnail.classList.toggle('active', currentPage.value === i)
+
+    const canvas = document.createElement('canvas')
+    thumbnail.appendChild(canvas)
+
+    const pageNumber = document.createElement('div')
+    pageNumber.className = 'page-number'
+    pageNumber.textContent = `第 ${i + 1} 页`
+    thumbnail.appendChild(pageNumber)
+
+    thumbnail.addEventListener('click', () => selectPage(i))
+    container.appendChild(thumbnail)
+
+    // 观察缩略图
+    thumbnailObserver.value?.observe(thumbnail)
+  }
+
+  // 立即渲染可见区域的缩略图
+  const visibleThumbnails = Array.from(container.children).slice(0, 5)
+  for (const thumbnail of visibleThumbnails) {
+    const pageIndex = parseInt(thumbnail.dataset.pageIndex)
+    await renderThumbnailContent(pageIndex, thumbnail.querySelector('canvas'))
+  }
+}
+
+// 修改 renderThumbnailContent 函数
+const renderThumbnailContent = async (pageIndex, canvas) => {
+  if (!currDoc || !canvas) return
+  
+  if (canvas.dataset.rendered === 'true') return
+
+  const page = await currDoc.getPage(pageIndex + 1)
+  // 获取页面的旋转角度
+  const rotation = page.rotate || 0
+  // 考虑旋转角度创建视口
+  const viewport = page.getViewport({ scale: 0.2, rotation: -rotation })
+
+  canvas.width = viewport.width
+  canvas.height = viewport.height
+
+  await page.render({
+    canvasContext: canvas.getContext('2d'),
+    viewport
+  }).promise
+
+  canvas.dataset.rendered = 'true'
+}
+
+// 在组件卸载时清理观察器
+onUnmounted(() => {
+  pageObserver.value?.disconnect()
+  thumbnailObserver.value?.disconnect()
+})
 </script>
 
 
@@ -758,5 +872,21 @@ watch(currentPage, (newPage) => {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.page-placeholder {
+  min-height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #f5f5f5;
+  margin-bottom: 20px;
+  
+  &:not([data-rendered="true"]) {
+    &::after {
+      content: "加载中...";
+      color: #999;
+    }
+  }
 }
 </style>
