@@ -6,6 +6,21 @@
           <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
             <n-button ghost>打开PDF文件</n-button>
           </n-upload>
+          <n-button-group v-if="currentPdf">
+            <n-button ghost @click="zoomIn">
+              <template #icon>
+                <n-icon><zoom-in-icon /></n-icon>
+              </template>
+            </n-button>
+            <n-button ghost @click="zoomOut">
+              <template #icon>
+                <n-icon><zoom-out-icon /></n-icon>
+              </template>
+            </n-button>
+            <n-dropdown :options="scaleOptions" @select="handleScaleSelect">
+              <n-button ghost>{{ Math.round(currentScale * 100) }}%</n-button>
+            </n-dropdown>
+          </n-button-group>
           <n-button ghost :disabled="!currentPdf">上方插入空白页</n-button>
           <n-button ghost :disabled="!currentPdf">下方插入空白页</n-button>
           <n-button ghost :disabled="!currentPdf">删除当前页面</n-button>
@@ -52,28 +67,18 @@ import {
   NLayoutSider,
   NLayoutContent,
   NLayoutFooter,
-  NButton, NSpace, NUpload, NEmpty
+  NButton, NSpace, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon
 } from 'naive-ui'
 import { ref, onMounted, nextTick } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
-// import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.js';
-// import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.entry';
-// import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs';
+import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon } from '@vicons/carbon'
 
 console.log('pdfjsLib', pdfjsLib.version)
-// 设置 PDF.js worker
-// pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.com/libraries/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
-// pdfjsLib.GlobalWorkerOptions.workerSrc = `pdfjs-dist/pdf.worker.mjs`
-// pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
   import.meta.url
 ).toString();
-/* pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-worker',
-  import.meta.url
-).toString(); */
 
 const currentPdf = ref(null)
 const pagesData = ref([])
@@ -82,10 +87,56 @@ const canvasRefs = ref({})
 const mainCanvas = ref(null)
 let currDoc = null
 
-// 加载文件
+const currentScale = ref(1.0)
+const containerWidth = ref(0)
+const containerHeight = ref(0)
+
+const scaleOptions = [
+  { label: '自适应页面', key: 'fit-page' },
+  { label: '自适应宽度', key: 'fit-width' },
+  { label: '实际大小', key: '100' },
+  { label: '50%', key: '50' },
+  { label: '75%', key: '75' },
+  { label: '100%', key: '100' },
+  { label: '125%', key: '125' },
+  { label: '150%', key: '150' },
+  { label: '200%', key: '200' },
+]
+
+const zoomIn = () => {
+  currentScale.value = Math.min(currentScale.value * 1.2, 5)
+  renderPage(currentPage.value)
+}
+
+const zoomOut = () => {
+  currentScale.value = Math.max(currentScale.value / 1.2, 0.2)
+  renderPage(currentPage.value)
+}
+
+const handleScaleSelect = async (key) => {
+  if (!currDoc) return
+
+  const page = await currDoc.getPage(currentPage.value + 1)
+  const viewport = page.getViewport({ scale: 1 })
+  const container = document.querySelector('.viewer')
+  
+  switch (key) {
+    case 'fit-page':
+      const scaleHeight = (container.clientHeight - 40) / viewport.height
+      const scaleWidth = (container.clientWidth - 40) / viewport.width
+      currentScale.value = Math.min(scaleHeight, scaleWidth)
+      break
+    case 'fit-width':
+      currentScale.value = (container.clientWidth - 40) / viewport.width
+      break
+    default:
+      currentScale.value = parseInt(key) / 100
+  }
+  
+  renderPage(currentPage.value)
+}
+
 const handleFileChange = async ({ file }) => {
-  // naiveUI的upload组件返回的是一个包含file的对象
-  // file.file 是实际的File对象
   if (!file.file) return
   console.log('pdf file', file.file)
 
@@ -105,14 +156,11 @@ const handleFileChange = async ({ file }) => {
       pagesData.value = Array(pdfDoc.numPages).fill(null)
       currentPage.value = 0
       console.log('currentPdf：', pdfDoc, pdfDoc.numPages)
-      // 等待下一个 tick，确保 canvas 引用可用
       await nextTick()
-      // 渲染所有缩略图
       for (let i = 0; i < pdfDoc.numPages; i++) {
         await renderThumbnail(i)
       }
 
-      // 渲染当前页
       renderPage(currentPage.value)
     } catch (error) {
       console.error('加载PDF文件时发生错误:', error)
@@ -123,7 +171,6 @@ const handleFileChange = async ({ file }) => {
     console.error('读取文件时发生错误:', error)
   }
 
-  // 直接使用file而不是file.file
   reader.readAsArrayBuffer(file.file)
 }
 
@@ -132,13 +179,11 @@ const renderThumbnail = async (pageIndex) => {
   console.log('currentPdf', currentPdf.value,)
   console.log('canvasRefs', canvasRefs.value)
   console.log(`canvasRefs[${pageIndex}]`, canvasRefs.value[pageIndex])
-  // 确保 currentPdf 和 canvasRefs 有效
   if (!currentPdf.value || !canvasRefs.value[pageIndex]) {
     console.error('currentPdf 或 canvasRefs 无效');
     return;
   }
   console.log('-----getpage:', pageIndex + 1)
-  // const page = await currentPdf.value.getPage(pageIndex + 1)
   const page = await currDoc.getPage(pageIndex + 1)
   console.log('page', page)
   const canvas = canvasRefs.value[pageIndex]
@@ -156,10 +201,9 @@ const renderThumbnail = async (pageIndex) => {
 const renderPage = async (pageIndex) => {
   if (!currentPdf.value || !mainCanvas.value) return
 
-  // const page = await currentPdf.value.getPage(pageIndex + 1)
   const page = await currDoc.getPage(pageIndex + 1)
   const canvas = mainCanvas.value
-  const viewport = page.getViewport({ scale: 1.5 })
+  const viewport = page.getViewport({ scale: currentScale.value })
 
   canvas.width = viewport.width
   canvas.height = viewport.height
@@ -174,6 +218,20 @@ const selectPage = (index) => {
   currentPage.value = index
   renderPage(index)
 }
+
+onMounted(() => {
+  const resizeObserver = new ResizeObserver(entries => {
+    for (const entry of entries) {
+      containerWidth.value = entry.contentRect.width
+      containerHeight.value = entry.contentRect.height
+    }
+  })
+
+  const container = document.querySelector('.viewer')
+  if (container) {
+    resizeObserver.observe(container)
+  }
+})
 </script>
 
 
@@ -211,10 +269,12 @@ const selectPage = (index) => {
   align-items: flex-start;
   height: 100%;
   overflow: auto;
+  padding: 20px;
 
   canvas {
     max-width: 100%;
     height: auto;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 }
 
