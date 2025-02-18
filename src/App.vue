@@ -1,41 +1,28 @@
 <template>
   <div style="height: 100%; background-color: aquamarine; position: relative">
     <n-layout style="height: 100%; width: 100%">
+      <!-- 修改头部布局 -->
       <n-layout-header style="height: 64px; padding: 10px" bordered>
-        <n-space>
-          <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
-            <n-button ghost>打开PDF文件</n-button>
-          </n-upload>
-          <n-button-group v-if="currentPdf">
-            <n-button ghost @click="zoomIn">
+        <n-space justify="space-between" align="center">
+          <!-- 左侧工具按钮组 -->
+          <n-space>
+            <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
+              <n-button ghost>打开PDF文件</n-button>
+            </n-upload>
+
+            <n-button ghost :disabled="!currentPdf">删除当前页面</n-button>
+            <n-button ghost :disabled="!currentPdf">插入图片</n-button>
+            <n-button ghost :disabled="!currentPdf">旋转当前页面</n-button>
+
+            <n-button ghost @click="showCreatePageModal = true" :disabled="!currentPdf">
               <template #icon>
-                <n-icon><zoom-in-icon /></n-icon>
+                <n-icon><add-icon /></n-icon>
               </template>
+              新建空白页
             </n-button>
-            <n-button ghost @click="zoomOut">
-              <template #icon>
-                <n-icon><zoom-out-icon /></n-icon>
-              </template>
-            </n-button>
-            <n-dropdown :options="scaleOptions" @select="handleScaleSelect">
-              <n-button ghost>{{ Math.round(currentScale * 100) }}%</n-button>
-            </n-dropdown>
-          </n-button-group>
-          <n-button ghost :disabled="!currentPdf">上方插入空白页</n-button>
-          <n-button ghost :disabled="!currentPdf">下方插入空白页</n-button>
-          <n-button ghost :disabled="!currentPdf">删除当前页面</n-button>
-          <n-button ghost :disabled="!currentPdf">插入图片</n-button>
-          <n-button ghost :disabled="!currentPdf">旋转当前页面</n-button>
-          <n-switch v-model:value="continuousScroll">
-            <template #checked>连续滚动</template>
-            <template #unchecked>单页显示</template>
-          </n-switch>
-          <n-button ghost @click="showCreatePageModal = true" :disabled="!currentPdf">
-            <template #icon>
-              <n-icon><add-icon /></n-icon>
-            </template>
-            新建空白页
-          </n-button>
+          </n-space>
+
+          <!-- 右侧保存按钮 -->
           <n-button ghost :disabled="!currentPdf" @click="handleSaveFile">
             <template #icon>
               <n-icon><save-icon /></n-icon>
@@ -71,8 +58,60 @@
           </div>
         </n-layout>
       </n-layout>
+      <!-- 修改页脚布局 -->
       <n-layout-footer position="absolute" style="height: 64px; padding: 24px" bordered>
-        <span v-if="currentPdf">当前页面：{{ currentPage + 1 }} / {{ pagesData.length }}</span>
+        <n-space justify="center" align="center" style="height: 100%">
+          <!-- 连续滚动开关 -->
+          <n-switch v-model:value="continuousScroll">
+            <template #checked>连续滚动</template>
+            <template #unchecked>单页显示</template>
+          </n-switch>
+          
+          <!-- 添加间隔 -->
+          <div style="width: 48px"></div>
+          
+          <!-- 翻页控制组 -->
+          <n-space v-if="currentPdf" align="center">
+            <n-button ghost :disabled="currentPage <= 0" @click="prevPage">
+              <template #icon>
+                <n-icon><arrow-left-icon /></n-icon>
+              </template>
+            </n-button>
+            <n-input-number 
+              v-model:value="displayPage" 
+              :min="1" 
+              :max="pagesData.length" 
+              :style="{ width: '80px' }" 
+              @update:value="handlePageChange"
+            />
+            <span>/ {{ pagesData.length }}</span>
+            <n-button ghost :disabled="currentPage >= pagesData.length - 1" @click="nextPage">
+              <template #icon>
+                <n-icon><arrow-right-icon /></n-icon>
+              </template>
+            </n-button>
+          </n-space>
+  
+          <!-- 添加间隔 -->
+          <div style="width: 48px"></div>
+          
+          <!-- 缩放控制组 -->
+          <n-button-group v-if="currentPdf">
+            <n-button ghost @click="zoomIn">
+              <template #icon>
+                <n-icon><zoom-in-icon /></n-icon>
+              </template>
+            </n-button>
+            <n-button ghost @click="zoomOut">
+              <template #icon>
+                <n-icon><zoom-out-icon /></n-icon>
+              </template>
+            </n-button>
+            <n-dropdown :options="scaleOptions" @select="handleScaleSelect">
+              <n-button ghost>{{ Math.round(currentScale * 100) }}%</n-button>
+            </n-dropdown>
+          </n-button-group>
+        </n-space>
       </n-layout-footer>
     </n-layout>
   </div>
@@ -111,11 +150,11 @@ import {
   NLayoutSider,
   NLayoutContent,
   NLayoutFooter,
-  NButton, NSpace, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon, NSwitch, NModal, NForm, NFormItem, NRadioGroup, NRadio, NSelect
+  NButton, NSpace, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon, NSwitch, NModal, NForm, NFormItem, NRadioGroup, NRadio, NSelect, NInputNumber
 } from 'naive-ui'
-import { ref, onMounted, nextTick, watch, reactive } from 'vue'
+import { ref, onMounted, nextTick, watch, reactive, computed } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
-import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Add as AddIcon, Save as SaveIcon } from '@vicons/carbon'
+import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Add as AddIcon, Save as SaveIcon, ArrowLeft as ArrowLeftIcon, ArrowRight as ArrowRightIcon } from '@vicons/carbon'
 import { PDFDocument, PageSizes } from 'pdf-lib'
 
 console.log('pdfjsLib', pdfjsLib.version)
@@ -204,10 +243,10 @@ const handleFileChange = async ({ file }) => {
       pagesData.value = Array(pdfDoc.numPages).fill(null)
       currentPage.value = 0
       console.log('currentPdf：', pdfDoc, pdfDoc.numPages)
-      
+
       // 等待 DOM 更新
       await nextTick()
-      
+
       // 先渲染所有缩略图
       for (let i = 0; i < pdfDoc.numPages; i++) {
         await renderThumbnail(i)
@@ -508,28 +547,28 @@ const handleThumbnailScroll = (e) => {
 // 处理保存文件
 const handleSaveFile = async () => {
   if (!currDoc) return
-  
+
   try {
     // 获取当前文档的二进制数据
     const existingPdfBytes = await currentPdf.value.getData()
-    
+
     // 创建 Blob 对象
     const blob = new Blob([existingPdfBytes], { type: 'application/pdf' })
-    
+
     // 创建下载链接
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    
+
     // 设置默认文件名
     const now = new Date()
     const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`
     link.download = `modified_${timestamp}.pdf`
-    
+
     // 触发下载
     document.body.appendChild(link)
     link.click()
-    
+
     // 清理
     window.URL.revokeObjectURL(url)
     document.body.removeChild(link)
@@ -537,6 +576,54 @@ const handleSaveFile = async () => {
     console.error('保存文件时发生错误:', error)
   }
 }
+
+// 添加页面导航相关状态和方法
+const displayPage = computed({
+  get: () => currentPage.value + 1,
+  set: (val) => {
+    handlePageChange(val)
+  }
+})
+
+// 修改页面导航相关方法
+const handlePageChange = (pageNumber) => {
+  if (!pageNumber) return
+  const newPage = Math.max(1, Math.min(pageNumber, pagesData.value.length)) - 1
+  currentPage.value = newPage
+  
+  if (continuousScroll.value) {
+    // 连续滚动模式下，滚动到对应页面
+    const container = document.querySelector('.pages-container')
+    const targetCanvas = container?.children[newPage]
+    if (targetCanvas) {
+      isScrolling = true
+      targetCanvas.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setTimeout(() => { isScrolling = false }, 1000)
+    }
+  } else {
+    // 单页模式下重新渲染
+    renderPages()
+  }
+}
+
+const prevPage = () => {
+  if (currentPage.value > 0) {
+    handlePageChange(currentPage.value)
+  }
+}
+
+const nextPage = () => {
+  if (currentPage.value < pagesData.value.length - 1) {
+    handlePageChange(currentPage.value + 2)
+  }
+}
+
+// 修改 watch 以监听页码变化
+watch(currentPage, (newPage) => {
+  if (!continuousScroll.value) {
+    renderPages()
+  }
+})
 </script>
 
 
