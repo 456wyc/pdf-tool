@@ -7,12 +7,34 @@
           <!-- 左侧工具按钮组 -->
           <n-space>
             <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
-              <n-button ghost>打开PDF文件</n-button>
+              <n-button ghost>
+                <template #icon>
+                  <n-icon><pdf-icon /></n-icon>
+                </template>
+                打开PDF文件
+              </n-button>
             </n-upload>
 
-            <n-button ghost :disabled="!currentPdf">删除当前页面</n-button>
-            <n-button ghost :disabled="!currentPdf">插入图片</n-button>
-            <n-button ghost :disabled="!currentPdf">旋转当前页面</n-button>
+            <n-button ghost :disabled="!currentPdf">
+              <template #icon>
+                <n-icon><delete-icon /></n-icon>
+              </template>
+              删除当前页面
+            </n-button>
+
+            <n-button ghost :disabled="!currentPdf">
+              <template #icon>
+                <n-icon><image-icon /></n-icon>
+              </template>
+              插入图片
+            </n-button>
+
+            <n-button ghost :disabled="!currentPdf">
+              <template #icon>
+                <n-icon><rotate-icon /></n-icon>
+              </template>
+              旋转当前页面
+            </n-button>
 
             <n-button ghost @click="showCreatePageModal = true" :disabled="!currentPdf">
               <template #icon>
@@ -150,7 +172,7 @@ import {
 } from 'naive-ui'
 import { ref, onMounted, nextTick, watch, reactive, computed } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
-import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Add as AddIcon, Save as SaveIcon, ArrowLeft as ArrowLeftIcon, ArrowRight as ArrowRightIcon } from '@vicons/carbon'
+import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Add as AddIcon, Save as SaveIcon, ArrowLeft as ArrowLeftIcon, ArrowRight as ArrowRightIcon, DocumentPdf as PdfIcon, TrashCan as DeleteIcon, Image as ImageIcon, Rotate as RotateIcon } from '@vicons/carbon'
 import { PDFDocument, PageSizes } from 'pdf-lib'
 
 console.log('pdfjsLib', pdfjsLib.version)
