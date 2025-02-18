@@ -300,37 +300,44 @@ const renderingLocks = new Map()
 
 // 修改 renderThumbnail 函数
 const renderThumbnail = async (pageIndex) => {
-  if (!currentPdf.value || !canvasRefs.value[pageIndex]) return
+  if (!currDoc || !canvasRefs.value[pageIndex]) return
   if (renderingQueue.has(pageIndex)) return
-  if (renderingLocks.get(pageIndex)) return // 检查是否正在渲染
+  if (renderingLocks.get(pageIndex)) return
 
   try {
     renderingQueue.add(pageIndex)
-    renderingLocks.set(pageIndex, true) // 设置渲染锁
+    renderingLocks.set(pageIndex, true)
 
     const canvas = canvasRefs.value[pageIndex]
-    if (canvas.dataset.rendered === 'true') {
+    if (!canvas || canvas.dataset.rendered === 'true') {
       renderingQueue.delete(pageIndex)
       renderingLocks.delete(pageIndex)
       return
     }
 
     const page = await currDoc.getPage(pageIndex + 1)
+    const originalViewport = page.getViewport({ scale: 1.0 })
+    
+    // 计算缩略图的合适缩放比例
+    const maxWidth = 150 // 设置缩略图的最大宽度
+    const scale = maxWidth / originalViewport.width
+    
     const viewport = page.getViewport({ 
-      scale: 0.2,
-      rotation: page.rotate || 0
+      scale: scale,
+      rotation: page.rotate || 0 
     })
 
     canvas.width = viewport.width
     canvas.height = viewport.height
+    
+    const context = canvas.getContext('2d', { alpha: false })
+    context.fillStyle = 'white'
+    context.fillRect(0, 0, canvas.width, canvas.height)
 
-    const context = canvas.getContext('2d')
-    context.clearRect(0, 0, canvas.width, canvas.height)
-
-    // 使用新的渲染上下文
     const renderContext = {
       canvasContext: context,
-      viewport
+      viewport,
+      background: 'white'
     }
 
     await page.render(renderContext).promise
@@ -339,7 +346,62 @@ const renderThumbnail = async (pageIndex) => {
     console.error(`渲染缩略图 ${pageIndex + 1} 时发生错误:`, error)
   } finally {
     renderingQueue.delete(pageIndex)
-    renderingLocks.delete(pageIndex) // 释放渲染锁
+    renderingLocks.delete(pageIndex)
+  }
+}
+
+// 添加渲染锁Map
+const pageRenderLocks = new Map()
+
+// 修改 renderPageContent 函数
+const renderPageContent = async (pageIndex, container) => {
+  if (!currDoc) return
+  
+  // 检查是否已经渲染完成
+  if (container.dataset.rendered === 'true') return
+  
+  // 检查是否正在渲染
+  if (pageRenderLocks.get(pageIndex)) return
+  
+  const canvas = container.querySelector('canvas')
+  if (!canvas) return
+
+  try {
+    // 设置渲染锁
+    pageRenderLocks.set(pageIndex, true)
+    
+    const page = await currDoc.getPage(pageIndex + 1)
+    const viewport = page.getViewport({ 
+      scale: currentScale.value,
+      rotation: page.rotate || 0 // 使用页面原始旋转角度，如果没有则默认为0
+    })
+
+    // 设置画布尺寸
+    canvas.width = viewport.width
+    canvas.height = viewport.height
+
+    // 创建新的渲染上下文
+    const context = canvas.getContext('2d')
+    context.fillStyle = 'white'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+
+    const renderContext = {
+      canvasContext: context,
+      viewport,
+      background: 'white',
+      enableWebGL: true
+    }
+
+    // 等待渲染完成
+    await page.render(renderContext).promise
+    
+    // 标记渲染完成
+    container.dataset.rendered = 'true'
+  } catch (error) {
+    console.error(`渲染页面 ${pageIndex + 1} 时发生错误:`, error)
+  } finally {
+    // 移除渲染锁
+    pageRenderLocks.delete(pageIndex)
   }
 }
 
@@ -350,8 +412,9 @@ const renderPages = async () => {
   const container = document.querySelector('.pages-container')
   if (!container) return
 
-  // 清空现有内容
+  // 清空现有内容和渲染锁
   container.innerHTML = ''
+  pageRenderLocks.clear()
 
   if (continuousScroll.value) {
     // 连续滚动模式：先创建所有占位符
@@ -369,11 +432,13 @@ const renderPages = async () => {
       pageObserver.value?.observe(pageContainer)
     }
 
-    // 立即渲染当前页面
-    const currentContainer = container.children[currentPage.value]
-    if (currentContainer) {
-      await renderPageContent(currentPage.value, currentContainer)
-      currentContainer.scrollIntoView({ behavior: 'instant', block: 'start' })
+    // 立即渲染可见页面
+    const visiblePageIndexes = getVisiblePageIndexes()
+    for (const index of visiblePageIndexes) {
+      const pageContainer = container.children[index]
+      if (pageContainer) {
+        await renderPageContent(index, pageContainer)
+      }
     }
   } else {
     // 单页模式：只渲染当前页面
@@ -391,58 +456,23 @@ const renderPages = async () => {
   }
 }
 
-// 修改 renderPageContent 函数
-const renderPageContent = async (pageIndex, container) => {
-  if (!currDoc) return
-  
-  // 如果已经渲染过，就跳过
-  if (container.dataset.rendered === 'true') return
-  
-  const canvas = container.querySelector('canvas')
-  if (!canvas) return
+// 添加获取可见页面索引的辅助函数
+const getVisiblePageIndexes = () => {
+  const container = document.querySelector('.viewer')
+  if (!container) return []
 
-  try {
-    const page = await currDoc.getPage(pageIndex + 1)
-    const viewport = page.getViewport({ 
-      scale: currentScale.value, 
-      rotation: page.rotate 
-    })
+  const containerRect = container.getBoundingClientRect()
+  const pages = document.querySelectorAll('.page-placeholder')
+  const visibleIndexes = []
 
-    canvas.width = viewport.width
-    canvas.height = viewport.height
-
-    const context = canvas.getContext('2d')
-    // 清空画布
-    context.clearRect(0, 0, canvas.width, canvas.height)
-
-    // 使用新的渲染上下文
-    const renderContext = {
-      canvasContext: context,
-      viewport,
-      enableWebGL: true
+  pages.forEach((page, index) => {
+    const rect = page.getBoundingClientRect()
+    if (rect.top < containerRect.bottom && rect.bottom > containerRect.top) {
+      visibleIndexes.push(index)
     }
+  })
 
-    await page.render(renderContext).promise
-    container.dataset.rendered = 'true'
-  } catch (error) {
-    console.error(`渲染页面 ${pageIndex + 1} 时发生错误:`, error)
-  }
-}
-
-const renderPage = async (pageIndex) => {
-  if (!currentPdf.value || !mainCanvas.value) return
-
-  const page = await currDoc.getPage(pageIndex + 1)
-  const canvas = mainCanvas.value
-  const viewport = page.getViewport({ scale: currentScale.value })
-
-  canvas.width = viewport.width
-  canvas.height = viewport.height
-
-  await page.render({
-    canvasContext: canvas.getContext('2d'),
-    viewport
-  }).promise
+  return visibleIndexes
 }
 
 // 修改 selectPage 函数
@@ -565,30 +595,30 @@ const rules = {
   }
 }
 
-// 处理创建空白页面
+// 修改 handleCreatePage 函数
 const handleCreatePage = async () => {
   if (!currDoc) return
 
   try {
     creating.value = true
 
-    // 先获取当前文档的二进制数据
+    // 获取当前文档的二进制数据
     const existingPdfBytes = await currentPdf.value.getData()
-
-    // 使用 pdf-lib 加载当前文档
+    
+    // 使用 pdf-lib 创建新文档
     const pdfDoc = await PDFDocument.load(existingPdfBytes)
-
+    
     // 获取页面尺寸
     let pageSize = PageSizes[formValue.pageSize]
     if (formValue.orientation === 'landscape') {
-      pageSize = [pageSize[1], pageSize[0]] // 交换宽高实现横向
+      pageSize = [pageSize[1], pageSize[0]]
     }
 
-    // 在指定位置插入空白页
-    const insertIndex = formValue.position === 'before' ?
-      currentPage.value :
+    // 插入空白页
+    const insertIndex = formValue.position === 'before' ? 
+      currentPage.value : 
       currentPage.value + 1
-
+    
     pdfDoc.insertPage(insertIndex, pageSize)
 
     // 保存修改后的文档
@@ -596,27 +626,44 @@ const handleCreatePage = async () => {
 
     // 重新加载修改后的文档
     const loadingTask = pdfjsLib.getDocument({ data: modifiedPdfBytes })
-    const newPdfDoc = await loadingTask.promise
+    currentPdf.value = await loadingTask.promise
+    currDoc = currentPdf.value
+    
+    // 更新页面数组
+    pagesData.value = Array(currDoc.numPages).fill(null)
 
-    // 更新当前文档
-    currentPdf.value = newPdfDoc
-    currDoc = newPdfDoc
-    pagesData.value = Array(newPdfDoc.numPages).fill(null)
+    // 重置渲染状态
+    canvasRefs.value = {}
+    thumbnailRefs.value = {}
+    
+    // 清理观察器
+    pageObserver.value?.disconnect()
+    thumbnailObserver.value?.disconnect()
 
-    // 重新渲染所有页面
+    // 等待 DOM 更新
     await nextTick()
-    for (let i = 0; i < newPdfDoc.numPages; i++) {
-      await renderThumbnail(i)
+
+    // 重新初始化观察器
+    initObservers()
+
+    // 清空容器
+    if (thumbnailsRef.value) {
+      thumbnailsRef.value.innerHTML = ''
+    }
+    
+    const pagesContainer = document.querySelector('.pages-container')
+    if (pagesContainer) {
+      pagesContainer.innerHTML = ''
     }
 
-    // 如果是连续滚动模式，重新渲染主视图
-    if (continuousScroll.value) {
-      renderPages()
-    } else {
-      renderPage(currentPage.value)
-    }
+    // 重新渲染
+    await renderThumbnails()
+    await renderPages()
 
+    // 关闭模态框并选择新页面
     showCreatePageModal.value = false
+    await selectPage(insertIndex)
+
   } catch (error) {
     console.error('创建空白页面时发生错误:', error)
   } finally {
@@ -740,100 +787,64 @@ const initObservers = () => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
         const pageIndex = parseInt(entry.target.dataset.pageIndex)
-        renderThumbnail(pageIndex)
+        if (!isNaN(pageIndex)) {
+          // 确保 entry.target 中有 canvas 元素
+          const canvas = entry.target.querySelector('canvas')
+          if (canvas) {
+            canvasRefs.value[pageIndex] = canvas
+            renderThumbnail(pageIndex)
+          }
+        }
       }
     })
   }, {
-    root: document.querySelector('.thumbnails'),
-    rootMargin: '50px 0px'
+    root: document.querySelector('#pages'),
+    rootMargin: '50px 0px',
+    threshold: 0.1
   })
 }
 
 // 修改缩略图渲染函数
 const renderThumbnails = async () => {
-  await nextTick()
-  
-  const container = thumbnailsRef.value
-  if (!container || !currDoc) return
+  if (!currDoc || !thumbnailsRef.value) return
 
   try {
-    // 清空容器的所有子元素
+    const container = thumbnailsRef.value
     container.innerHTML = ''
-    
-    // 重置引用对象
-    canvasRefs.value = {}
-    thumbnailRefs.value = {}
 
-    // 一次性创建所有缩略图
-    const fragment = document.createDocumentFragment()
-
+    // 为每一页创建DOM元素
     for (let i = 0; i < currDoc.numPages; i++) {
       const thumbnail = document.createElement('div')
       thumbnail.className = 'thumbnail'
-      thumbnail.dataset.pageIndex = i.toString()
       thumbnail.classList.toggle('active', currentPage.value === i)
+      thumbnail.dataset.pageIndex = i
 
       const canvas = document.createElement('canvas')
       thumbnail.appendChild(canvas)
-
+      
       const pageNumber = document.createElement('div')
       pageNumber.className = 'page-number'
       pageNumber.textContent = `第 ${i + 1} 页`
       thumbnail.appendChild(pageNumber)
-
-      // 绑定点击事件
-      thumbnail.addEventListener('click', () => selectPage(i))
       
-      // 存储引用
+      container.appendChild(thumbnail)
       canvasRefs.value[i] = canvas
       thumbnailRefs.value[i] = thumbnail
 
-      // 将缩略图添加到文档片段
-      fragment.appendChild(thumbnail)
-    }
-
-    // 修改 renderThumbnails 函数中的初始渲染部分
-    const renderInitialThumbnails = async (container) => {
-      // 等待一小段时间确保 DOM 已更新
-      await new Promise(resolve => setTimeout(resolve, 100))
-    
-      // 获取可见的缩略图
-      const visibleThumbnails = Array.from(container.children)
-        .filter(thumbnail => {
-          const rect = thumbnail.getBoundingClientRect()
-          return rect.top < window.innerHeight && rect.bottom > 0
-        })
-        .slice(0, 5)
-    
-      // 逐个渲染可见的缩略图
-      for (const thumbnail of visibleThumbnails) {
-        const pageIndex = parseInt(thumbnail.dataset.pageIndex)
-        await renderThumbnail(pageIndex)
-      }
-    }
-    
-    // 在 renderThumbnails 函数的最后添加
-    container.appendChild(fragment)
-    await renderInitialThumbnails(container)
-
-    // 初始化观察器
-    if (thumbnailObserver.value) {
-      thumbnailObserver.value.disconnect()
+      // 为每个缩略图添加点击事件
+      thumbnail.addEventListener('click', () => selectPage(i))
       
-      // 观察所有缩略图
-      Array.from(container.children).forEach(thumbnail => {
-        thumbnailObserver.value.observe(thumbnail)
-      })
-
-      // 立即渲染前几个可见的缩略图
-      const initialVisibleCount = 5
-      for (let i = 0; i < Math.min(initialVisibleCount, currDoc.numPages); i++) {
-        await renderThumbnail(i)
-      }
+      // 将缩略图添加到观察器
+      thumbnailObserver.value?.observe(thumbnail)
     }
 
+    // 立即渲染前几个缩略图
+    const initialVisibleCount = 5
+    for (let i = 0; i < Math.min(initialVisibleCount, currDoc.numPages); i++) {
+      await renderThumbnail(i)
+    }
   } catch (error) {
-    console.error('渲染缩略图时发生错误:', error)
+    console.error('创建缩略图时发生错误:', error)
   }
 }
 
@@ -855,39 +866,24 @@ const renderingQueue = new Set()
   gap: 16px;
   height: 100%;
   overflow-y: auto;
+  padding: 0 12px;
 
   .thumbnail {
     cursor: pointer;
-    padding: 12px;
+    padding: 8px;
     border-radius: 4px;
     background-color: white;
     border: 1px solid #e5e5e5;
-    box-shadow:
-      0 1px 3px rgba(0, 0, 0, 0.1),
-      0 2px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     transition: all 0.2s ease;
-
-    &:hover {
-      transform: translateY(-2px);
-      box-shadow:
-        0 2px 4px rgba(0, 0, 0, 0.12),
-        0 4px 6px rgba(0, 0, 0, 0.07),
-        0 8px 16px rgba(0, 0, 0, 0.05);
-    }
-
-    &.active {
-      border-color: #18a058;
-      box-shadow:
-        0 0 0 2px rgba(24, 160, 88, 0.2),
-        0 2px 4px rgba(0, 0, 0, 0.12),
-        0 4px 8px rgba(0, 0, 0, 0.08);
-    }
+    width: 100%;
 
     canvas {
       width: 100%;
       height: auto;
-      border-radius: 2px;
+      display: block;
       background-color: white;
+      border-radius: 2px;
     }
 
     .page-number {
@@ -895,7 +891,16 @@ const renderingQueue = new Set()
       margin-top: 8px;
       font-size: 12px;
       color: #666;
-      font-weight: 500;
+    }
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    &.active {
+      border-color: #18a058;
+      box-shadow: 0 0 0 2px rgba(24, 160, 88, 0.2);
     }
   }
 }
