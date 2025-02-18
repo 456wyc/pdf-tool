@@ -374,10 +374,11 @@ const renderPageContent = async (pageIndex, container) => {
   if (!canvas) return
 
   const page = await currDoc.getPage(pageIndex + 1)
-  // 获取页面的旋转角度
-  const rotation = page.rotate || 0
-  // 考虑旋转角度创建视口
-  const viewport = page.getViewport({ scale: currentScale.value, rotation: -rotation })
+  // 获取页面的旋转角度，不对其取负值
+  const viewport = page.getViewport({ 
+    scale: currentScale.value, 
+    rotation: page.rotate // 移除负号，使用原始旋转角度
+  })
 
   canvas.width = viewport.width
   canvas.height = viewport.height
