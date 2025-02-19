@@ -22,7 +22,7 @@
               删除当前页面
             </n-button>
 
-            <n-button ghost :disabled="!currentPdf">
+            <n-button ghost @click="handleAddImagePage" :disabled="!currentPdf">
               <template #icon>
                 <n-icon><image-icon /></n-icon>
               </template>
@@ -36,11 +36,11 @@
               旋转当前页面
             </n-button>
 
-            <n-button ghost @click="showCreatePageModal = true" :disabled="!currentPdf">
+            <n-button ghost @click="handleAddNewPage" :disabled="!currentPdf">
               <template #icon>
                 <n-icon><add-icon /></n-icon>
               </template>
-              新建空白页
+              新建页面
             </n-button>
           </n-space>
 
@@ -133,8 +133,8 @@
       </n-layout>
     </n-layout>
   </div>
-  <!-- 修改模态框部分 -->
-  <n-modal v-model:show="showCreatePageModal" preset="card" title="新建图片页面" style="width: 400px">
+  <!-- 新建页面模态框 -->
+  <n-modal v-model:show="showCreatePageModal" preset="card" :title="createModalTitle" style="width: 400px">
     <n-form ref="formRef" :model="formValue" :rules="rules">
       <n-form-item label="插入位置" path="position">
         <n-radio-group v-model:value="formValue.position">
@@ -152,12 +152,7 @@
         <n-select v-model:value="formValue.pageSize" :options="pageSizeOptions" />
       </n-form-item>
       <n-form-item label="上传图片" path="image">
-        <n-upload
-          accept="image/*"
-          :max="1"
-          :default-upload="false"
-          @change="handleImageChange"
-        >
+        <n-upload accept="image/*" :max="1" :default-upload="false" @change="handleImageChange">
           <n-button>选择图片</n-button>
         </n-upload>
       </n-form-item>
@@ -681,8 +676,17 @@ watch(currentScale, () => {
 
 // 新增状态
 const showCreatePageModal = ref(false)
+const createModalTitle = ref('新建页面')
 const creating = ref(false)
 const formRef = ref(null)
+
+const changeModalTitle4BlankPage = (title) => {
+  createModalTitle.value = title || '新建页面'
+}
+
+const changeModalTitle4ImagePage = (title) => {
+  createModalTitle.value = title || '新建图片页面'
+}
 
 // 表单数据
 const formValue = reactive({
@@ -717,6 +721,18 @@ const rules = {
     message: '请选择页面大小'
   }
 }
+
+const handleAddImagePage = () => {
+  if (!currentPdf) return
+  showCreatePageModal.value = true
+  changeModalTitle4ImagePage()
+} 
+
+const handleAddNewPage = () => {
+  if (!currentPdf) return
+  showCreatePageModal.value = true
+  changeModalTitle4BlankPage()
+} 
 
 // 处理图片选择
 const handleImageChange = ({ file }) => {
