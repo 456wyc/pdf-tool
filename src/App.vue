@@ -88,7 +88,7 @@
             </div>
           </n-layout-sider>
           <n-layout>
-            <n-layout id="content" content-style="padding: 0;" :native-scrollbar="false" bordered>
+            <n-layout id="content" content-style="padding-bottom: 64px;" :native-scrollbar="false" bordered>
               <div v-if="currentPdf" class="viewer">
                 <div class="pages-container"></div>
               </div>
