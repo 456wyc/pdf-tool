@@ -645,6 +645,10 @@ const renderPageContent = async (pageIndex, container) => {
     // 设置渲染锁
     pageRenderLocks.set(pageIndex, true)
 
+    // 清除画布
+    const context = canvas.getContext('2d')
+    context.clearRect(0, 0, canvas.width, canvas.height)
+
     const page = await currDoc.getPage(pageIndex + 1)
     const viewport = page.getViewport({
       scale: currentScale.value,
@@ -656,7 +660,6 @@ const renderPageContent = async (pageIndex, container) => {
     canvas.height = viewport.height
 
     // 创建新的渲染上下文
-    const context = canvas.getContext('2d')
     context.fillStyle = 'white'
     context.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -752,6 +755,30 @@ const getVisiblePageIndexes = () => {
 
 // 修改 selectPage 函数
 const selectPage = async (index) => {
+  if (index === currentPage.value) return // 如果是同一页，不需要重新渲染
+  
+  // 如果之前在编辑模式，先退出编辑模式
+  if (editingMode.value !== 'none') {
+    // 清理所有编辑状态
+    editingMode.value = 'none'
+    isDrawing.value = false
+    isDrawingShape.value = false
+    currentDrawingPath.value = []
+    shapeStart.value = null
+    shapeEnd.value = null
+    offscreenCanvas.value = null
+    
+    // 移除事件监听器
+    removeDrawingListeners()
+    removeShapeListeners()
+    
+    // 恢复默认光标
+    const container = document.querySelector('.pages-container')
+    if (container) {
+      container.style.cursor = 'default'
+    }
+  }
+
   currentPage.value = index
 
   // 更新所有缩略图的 active 状态
@@ -1285,39 +1312,50 @@ const shapeStart = ref(null)
 const shapeEnd = ref(null)
 const isDrawingShape = ref(false)
 
-// 开始绘制图形
+/ 开始绘制图形
 const startShapeDrawing = (e) => {
   if (editingMode.value !== 'shape') return
 
+  const canvas = getCurrentPageCanvas()
+  if (!canvas) return
+
+  // 获取相对于当前canvas的坐标
+  const rect = canvas.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+
   isDrawingShape.value = true
-  const { offsetX, offsetY } = e
-  shapeStart.value = { x: offsetX, y: offsetY }
-  shapeEnd.value = { x: offsetX, y: offsetY }
+  shapeStart.value = { x, y }
+  shapeEnd.value = { x, y }
 
   // 创建新的离屏画布并保存原始内容
-  const canvas = document.querySelector('.page-canvas')
-  if (canvas) {
-    offscreenCanvas.value = document.createElement('canvas')
-    offscreenCanvas.value.width = canvas.width
-    offscreenCanvas.value.height = canvas.height
-    const ctx = offscreenCanvas.value.getContext('2d')
-    ctx.drawImage(canvas, 0, 0)
-  }
+  offscreenCanvas.value = document.createElement('canvas')
+  offscreenCanvas.value.width = canvas.width
+  offscreenCanvas.value.height = canvas.height
+  const ctx = offscreenCanvas.value.getContext('2d')
+  ctx.drawImage(canvas, 0, 0)
 }
 
 // 绘制图形过程
 const drawShape = (e) => {
   if (!isDrawingShape.value) return
 
-  const { offsetX, offsetY } = e
-  shapeEnd.value = { x: offsetX, y: offsetY }
+  const canvas = getCurrentPageCanvas()
+  if (!canvas) return
+
+  // 获取相对于当前canvas的坐标
+  const rect = canvas.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+
+  shapeEnd.value = { x, y }
   renderShapePreview()
 }
 
 // 添加一个状态来跟踪是否需要保存
 const needsSaving = ref(false)
 
-// 修改 stopShapeDrawing 函数
+// 停止绘制图形
 const stopShapeDrawing = async () => {
   if (!isDrawingShape.value) return
 
@@ -1460,19 +1498,8 @@ const offscreenCanvas = ref(null)
 const renderShapePreview = () => {
   if (!shapeStart.value || !shapeEnd.value) return
 
-  const canvas = document.querySelector('.page-canvas')
+  const canvas = getCurrentPageCanvas()
   if (!canvas) return
-
-  // 创建或更新离屏画布
-  if (!offscreenCanvas.value) {
-    offscreenCanvas.value = document.createElement('canvas')
-    offscreenCanvas.value.width = canvas.width
-    offscreenCanvas.value.height = canvas.height
-
-    // 保存原始页面内容到离屏画布
-    const ctx = offscreenCanvas.value.getContext('2d')
-    ctx.drawImage(canvas, 0, 0)
-  }
 
   // 获取主画布上下文
   const mainCtx = canvas.getContext('2d')
@@ -1594,111 +1621,56 @@ const removeDrawingListeners = () => {
   container.removeEventListener('mouseleave', stopDrawing)
 }
 
-// 修改开始绘制函数，初始化离屏画布
+// 获取当前页面canvas的辅助函数
+const getCurrentPageCanvas = () => {
+  const container = document.querySelector('.pages-container')
+  if (!container) return null
+  
+  // 在连续滚动模式下,通过页码找到对应的canvas
+  const pageContainer = container.children[currentPage.value]
+  if (!pageContainer) return null
+
+  return pageContainer.querySelector('.page-canvas')
+}
+
+// 开始绘制函数，初始化离屏画布
 const startDrawing = (e) => {
   if (editingMode.value !== 'drawing') return
 
+  const canvas = getCurrentPageCanvas()
+  if (!canvas) return
+  
+  // 获取相对于当前canvas的坐标
+  const rect = canvas.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+
   isDrawing.value = true
-  const { offsetX, offsetY } = e
-  currentDrawingPath.value = [[offsetX, offsetY]]
+  currentDrawingPath.value = [[x, y]]
 
   // 创建新的离屏画布并保存原始内容
-  const canvas = document.querySelector('.page-canvas')
-  if (canvas) {
-    offscreenCanvas.value = document.createElement('canvas')
-    offscreenCanvas.value.width = canvas.width
-    offscreenCanvas.value.height = canvas.height
-    const ctx = offscreenCanvas.value.getContext('2d')
-    ctx.drawImage(canvas, 0, 0)
-  }
+  offscreenCanvas.value = document.createElement('canvas')
+  offscreenCanvas.value.width = canvas.width
+  offscreenCanvas.value.height = canvas.height
+  const ctx = offscreenCanvas.value.getContext('2d')
+  ctx.drawImage(canvas, 0, 0)
 }
 
 // 绘制过程
 const draw = (e) => {
   if (!isDrawing.value) return
 
-  const { offsetX, offsetY } = e
-  currentDrawingPath.value.push([offsetX, offsetY])
-  renderCurrentPath()
-}
-
-// 修改停止绘制函数，添加保存到 PDF 的逻辑
-const stopDrawing = async () => {
-  if (!isDrawing.value) return
-
-  isDrawing.value = false
-  if (currentDrawingPath.value.length > 1) {
-    try {
-      // 获取当前文档的二进制数据
-      const existingPdfBytes = await currentPdf.value.getData()
-      const pdfDoc = await PDFDocument.load(existingPdfBytes)
-      const pages = pdfDoc.getPages()
-      const page = pages[currentPage.value]
-      const { width, height } = page.getSize()
-      const canvas = document.querySelector('.page-canvas')
-      const scale = width / canvas.width
-
-      // 转换路径坐标到 PDF 坐标系统
-      const pdfPath = currentDrawingPath.value.map(([x, y]) => ({
-        x: x * scale,
-        y: height - (y * scale) // PDF 坐标系统的 y 轴从底部向上
-      }))
-
-      // 在 PDF 中绘制路径
-      for (let i = 1; i < pdfPath.length; i++) {
-        page.drawLine({
-          start: pdfPath[i - 1],
-          end: pdfPath[i],
-          thickness: 2 * scale,
-          color: rgb(0, 0, 0),
-          opacity: 1
-        })
-      }
-
-      // 保存修改后的文档
-      const modifiedPdfBytes = await pdfDoc.save()
-
-      // 更新当前文档，但不触发页面重新渲染
-      currentPdf.value = await pdfjsLib.getDocument({ data: modifiedPdfBytes }).promise
-      currDoc = currentPdf.value
-
-      // 标记需要保存
-      needsSaving.value = true
-
-    } catch (error) {
-      console.error('保存手写内容到 PDF 时发生错误:', error)
-      dialog.error({
-        title: '错误',
-        content: '保存手写内容时发生错误，请重试',
-        positiveText: '确定'
-      })
-    }
-  }
-
-  currentDrawingPath.value = []
-}
-
-// 修改渲染当前路径函数，使用离屏画布
-const renderCurrentPath = () => {
-  if (!currentDrawingPath.value.length) return
-
-  const canvas = document.querySelector('.page-canvas')
+  const canvas = getCurrentPageCanvas()
   if (!canvas) return
 
-  // 创建或更新离屏画布
-  if (!offscreenCanvas.value) {
-    offscreenCanvas.value = document.createElement('canvas')
-    offscreenCanvas.value.width = canvas.width
-    offscreenCanvas.value.height = canvas.height
-    const ctx = offscreenCanvas.value.getContext('2d')
-    ctx.drawImage(canvas, 0, 0)
-  }
+  // 获取相对于当前canvas的坐标 
+  const rect = canvas.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+  currentDrawingPath.value.push([x, y])
 
   // 获取主画布上下文
   const mainCtx = canvas.getContext('2d')
-
-  // 清除主画布
-  mainCtx.clearRect(0, 0, canvas.width, canvas.height)
 
   // 恢复原始页面内容
   mainCtx.drawImage(offscreenCanvas.value, 0, 0)
@@ -1719,6 +1691,57 @@ const renderCurrentPath = () => {
 
   mainCtx.stroke()
   mainCtx.restore()
+}
+
+// 停止绘制函数，添加保存到 PDF 的逻辑
+const stopDrawing = async () => {
+  if (!isDrawing.value) return
+
+  try {
+    // 获取当前文档的二进制数据
+    const existingPdfBytes = await currentPdf.value.getData()
+    const pdfDoc = await PDFDocument.load(existingPdfBytes)
+    const pages = pdfDoc.getPages()
+    const page = pages[currentPage.value]
+    const { width, height } = page.getSize()
+    const canvas = getCurrentPageCanvas()
+    const scale = width / canvas.width
+
+    // 转换路径点到PDF坐标系
+    const pdfPath = currentDrawingPath.value.map(([x, y]) => ({
+      x: x * scale,
+      y: height - (y * scale) // 翻转Y坐标
+    }))
+
+    // 在PDF中绘制路径
+    if (pdfPath.length > 1) {
+      for (let i = 1; i < pdfPath.length; i++) {
+        const start = pdfPath[i - 1]
+        const end = pdfPath[i]
+        page.drawLine({
+          start: { x: start.x, y: start.y },
+          end: { x: end.x, y: end.y },
+          thickness: 2 * scale,
+          color: rgb(0, 0, 0)
+        })
+      }
+
+      // 保存修改后的文档
+      const modifiedPdfBytes = await pdfDoc.save()
+      currentPdf.value = await pdfjsLib.getDocument({ data: modifiedPdfBytes }).promise
+      currDoc = currentPdf.value
+
+      // 标记需要保存
+      needsSaving.value = true
+    }
+  } catch (error) {
+    console.error('保存手写内容时发生错误:', error)
+  } finally {
+    // 清理状态
+    isDrawing.value = false
+    currentDrawingPath.value = []
+    offscreenCanvas.value = null
+  }
 }
 
 // 添加文本注释
@@ -1759,7 +1782,7 @@ const thumbnailsRef = ref(null)
 const thumbnailRefs = ref({})
 let isScrolling = false
 
-// 修改 handleThumbnailScroll 函数
+// 处理缩略图滚动
 const handleThumbnailScroll = (e) => {
   // 移除整个函数内容，因为我们不需要缩略图滚动时影响大图
   // 如果将来需要记录当前可见缩略图，可以保留计算逻辑但不触发页面切换
@@ -1769,7 +1792,7 @@ const handleThumbnailScroll = (e) => {
 // 添加全局 dialog API
 const { dialog } = createDiscreteApi(['dialog'])
 
-// 修改删除页面的处理函数，添加确认对话框
+// 删除页面的处理函数，添加确认对话框
 const handleDeletePage = () => {
   if (!currDoc || pagesData.value.length <= 1) return
 
@@ -1853,7 +1876,7 @@ const handleSaveFile = async () => {
   }
 }
 
-// 添加页面导航相关状态和方法
+// 页面导航相关状态和方法
 const displayPage = computed({
   get: () => currentPage.value + 1,
   set: (val) => {
@@ -1861,7 +1884,7 @@ const displayPage = computed({
   }
 })
 
-// 修改页面导航相关方法
+// 页面导航相关方法
 const handlePageChange = (pageNumber) => {
   if (!pageNumber) return
   const newPage = Math.max(1, Math.min(pageNumber, pagesData.value.length)) - 1
@@ -1894,7 +1917,7 @@ const nextPage = () => {
   }
 }
 
-// 修改 watch 以监听页码变化
+// 监听页码变化
 watch(currentPage, (newPage) => {
   if (!continuousScroll.value) {
     renderPages()
@@ -1942,7 +1965,7 @@ const initObservers = () => {
   })
 }
 
-// 修改缩略图渲染函数
+// 缩略图渲染函数
 const renderThumbnails = async () => {
   if (!currDoc || !thumbnailsRef.value) return
 
@@ -1965,7 +1988,7 @@ const renderThumbnails = async () => {
 
       const pageNumber = document.createElement('div')
       pageNumber.className = 'page-number'
-      pageNumber.textContent = `第 ${i + 1} 页`
+      pageNumber.textContent = `第 ${i + 1 } 页`
       thumbnail.appendChild(pageNumber)
 
       container.appendChild(thumbnail)
