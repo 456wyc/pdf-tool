@@ -1067,9 +1067,32 @@ const handleRotatePage = async (rotationAngle = 90) => {
 
     // 保存修改后的文档
     const modifiedPdfBytes = await pdfDoc.save()
+    try {
+      // 直接加载新文档而不清空现有状态
+      const loadingTask = pdfjsLib.getDocument({ data: modifiedPdfBytes })
+      const newPdfDoc = await loadingTask.promise
+      
+      // 更新文档引用
+      currentPdf.value = newPdfDoc
+      currDoc = newPdfDoc
+      pagesData.value = Array(newPdfDoc.numPages).fill(null)
 
-    // 更新文档
-    await handleDocUpdate(modifiedPdfBytes, currentPageIndex)
+      // 等待 DOM 更新
+      await nextTick()
+
+      // 重新渲染当前页面和缩略图
+      await renderThumbnails()
+      await renderPages()
+
+      // 保持在当前页面
+      await selectPage(currentPageIndex)
+
+    } catch (error) {
+      console.error('更新文档时发生错误:', error)
+      throw error
+    }
+    /* // 更新文档
+    await handleDocUpdate(modifiedPdfBytes, currentPageIndex) */
 
     // 提示成功
     /* dialog.success({
