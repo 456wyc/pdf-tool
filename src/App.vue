@@ -899,7 +899,7 @@ const renderingQueue = new Set()
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     transition: all 0.2s ease;
     width: 100%; // 确保缩略图容器占满宽度
-    padding: 8px; // 移动内边距到容器层级
+    padding: 4px; // 移动内边距到容器层级
     box-sizing: border-box; // 确保padding不会增加实际宽度
 
     canvas {
@@ -909,7 +909,7 @@ const renderingQueue = new Set()
       background-color: white;
       border-radius: 2px;
       // 移除canvas的padding，改为更细致的阴影效果
-      box-shadow: 
+      box-shadow:
         0 1px 2px rgba(0, 0, 0, 0.1),
         0 2px 4px rgba(0, 0, 0, 0.05);
     }
@@ -924,14 +924,14 @@ const renderingQueue = new Set()
 
     &:hover {
       transform: translateY(-2px);
-      box-shadow: 
+      box-shadow:
         0 4px 8px rgba(0, 0, 0, 0.15),
         0 8px 16px rgba(0, 0, 0, 0.1);
     }
 
     &.active {
       border-color: #18a058;
-      box-shadow: 
+      box-shadow:
         0 0 0 2px rgba(24, 160, 88, 0.2),
         0 4px 8px rgba(0, 0, 0, 0.1);
     }
@@ -961,6 +961,7 @@ const renderingQueue = new Set()
       align-items: center;
       background-color: white;
       margin-bottom: 20px;
+      position: relative; // 添加相对定位
       padding: 20px;
       border-radius: 4px;
       // 添加纸张效果
@@ -981,6 +982,13 @@ const renderingQueue = new Set()
         &::after {
           content: "加载中...";
           color: #999;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          font-size: 14px;
+          white-space: nowrap;
+          z-index: 1; // 确保显示在最上层
         }
       }
 
@@ -1016,11 +1024,18 @@ const renderingQueue = new Set()
   align-items: center;
   background-color: #f5f5f5;
   margin-bottom: 20px;
+  position: relative; // 添加相对定位
 
   &:not([data-rendered="true"]) {
     &::after {
       content: "加载中...";
       color: #999;
+      position: absolute; // 使用绝对定位
+      top: 50%; // 垂直居中
+      left: 50%; // 水平居中
+      transform: translate(-50%, -50%); // 完全居中
+      font-size: 14px;
+      white-space: nowrap; // 防止文本换行
     }
   }
 }
