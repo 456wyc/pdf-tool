@@ -1,180 +1,189 @@
 <template>
-  <div style="height: 100%; background-color: aquamarine; position: relative">
-    <n-layout style="height: 100%; width: 100%">
-      <!-- 修改头部布局 -->
-      <n-layout-header style="height: 64px; padding: 10px" bordered>
-        <n-space justify="space-between" align="center">
-          <!-- 左侧工具按钮组 -->
-          <n-space>
-            <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
+  <n-dialog-provider>
+    <div style="height: 100%; background-color: aquamarine; position: relative">
+      <n-layout style="height: 100%; width: 100%">
+        <!-- 修改头部布局 -->
+        <n-layout-header style="height: 64px; padding: 10px" bordered>
+          <n-space justify="space-between" align="center">
+            <!-- 左侧工具按钮组 -->
+            <n-space>
+              <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
+                <n-button ghost>
+                  <template #icon>
+                    <n-icon><pdf-icon /></n-icon>
+                  </template>
+                  打开PDF文件
+                </n-button>
+              </n-upload>
               <n-button ghost>
                 <template #icon>
                   <n-icon><pdf-icon /></n-icon>
                 </template>
-                打开PDF文件
+                新建PDF文件
               </n-button>
-            </n-upload>
+              <n-button ghost @click="handleDeletePage" :disabled="!currentPdf">
+                <template #icon>
+                  <n-icon><delete-icon /></n-icon>
+                </template>
+                删除当前页面
+              </n-button>
 
-            <n-button ghost :disabled="!currentPdf">
-              <template #icon>
-                <n-icon><delete-icon /></n-icon>
-              </template>
-              删除当前页面
-            </n-button>
+              <n-button ghost @click="handleAddImagePage" :disabled="!currentPdf">
+                <template #icon>
+                  <n-icon><image-icon /></n-icon>
+                </template>
+                插入图片
+              </n-button>
 
-            <n-button ghost @click="handleAddImagePage" :disabled="!currentPdf">
-              <template #icon>
-                <n-icon><image-icon /></n-icon>
-              </template>
-              插入图片
-            </n-button>
+              <n-button ghost :disabled="!currentPdf">
+                <template #icon>
+                  <n-icon><rotate-icon /></n-icon>
+                </template>
+                旋转当前页面
+              </n-button>
 
-            <n-button ghost :disabled="!currentPdf">
-              <template #icon>
-                <n-icon><rotate-icon /></n-icon>
-              </template>
-              旋转当前页面
-            </n-button>
+              <n-button ghost @click="handleAddNewPage" :disabled="!currentPdf">
+                <template #icon>
+                  <n-icon><add-icon /></n-icon>
+                </template>
+                新建页面
+              </n-button>
+            </n-space>
 
-            <n-button ghost @click="handleAddNewPage" :disabled="!currentPdf">
+            <!-- 右侧保存按钮 -->
+            <n-button ghost :disabled="!currentPdf" @click="handleSaveFile">
               <template #icon>
-                <n-icon><add-icon /></n-icon>
+                <n-icon><save-icon /></n-icon>
               </template>
-              新建页面
+              保存文件
             </n-button>
           </n-space>
+        </n-layout-header>
+        <n-layout position="absolute" style="top: 64px;" bordered has-sider>
+          <n-layout-sider id="pages" content-style="padding: 12px;" :native-scrollbar="false" bordered
+            collapse-mode="width" :collapsed-width="120" :width="200" @scroll="handleThumbnailScroll">
+            <div v-if="pagesData.length" class="thumbnails" ref="thumbnailsRef">
+              <div v-for="(page, index) in pagesData" :key="index" class="thumbnail"
+                :class="{ active: currentPage === index }" @click="selectPage(index)"
+                :ref="el => { if (el) thumbnailRefs[index] = el }">
+                <canvas :ref="el => { if (el) canvasRefs[index] = el }"></canvas>
+                <div class="page-number">第 {{ index + 1 }} 页</div>
+              </div>
+            </div>
+          </n-layout-sider>
+          <n-layout>
+            <n-layout id="content" content-style="padding: 0;" :native-scrollbar="false" bordered>
+              <div v-if="currentPdf" class="viewer">
+                <div class="pages-container"></div>
+              </div>
+              <div v-else class="empty-state">
+                <n-empty description="请选择PDF文件">
+                  <template #extra>
+                    <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
+                      <n-button>选择文件</n-button>
+                    </n-upload>
+                  </template>
+                </n-empty>
+              </div>
+            </n-layout>
 
-          <!-- 右侧保存按钮 -->
-          <n-button ghost :disabled="!currentPdf" @click="handleSaveFile">
-            <template #icon>
-              <n-icon><save-icon /></n-icon>
-            </template>
-            保存文件
+            <!-- 修改页脚布局 -->
+            <n-layout-footer position="absolute" style="height: 64px; padding: 24px" bordered>
+              <!-- 使用flex布局实现居中 -->
+              <div class="footer-container">
+                <n-space :size="48" justify="center" align="center">
+                  <!-- 连续滚动开关 -->
+                  <n-switch v-model:value="continuousScroll">
+                    <template #checked>连续滚动</template>
+                    <template #unchecked>单页显示</template>
+                  </n-switch>
+
+                  <!-- 翻页控制组 -->
+                  <n-space v-if="currentPdf" align="center">
+                    <n-button ghost :disabled="currentPage <= 0" @click="prevPage">
+                      <template #icon>
+                        <n-icon><arrow-left-icon /></n-icon>
+                      </template>
+                    </n-button>
+                    <n-input-number v-model:value="displayPage" :min="1" :max="pagesData.length"
+                      :style="{ width: '80px' }" @update:value="handlePageChange" />
+                    <span>/ {{ pagesData.length }}</span>
+                    <n-button ghost :disabled="currentPage >= pagesData.length - 1" @click="nextPage">
+                      <template #icon>
+                        <n-icon><arrow-right-icon /></n-icon>
+                      </template>
+                    </n-button>
+                  </n-space>
+
+                  <!-- 缩放控制组 -->
+                  <n-button-group v-if="currentPdf">
+                    <n-button ghost @click="zoomIn">
+                      <template #icon>
+                        <n-icon><zoom-in-icon /></n-icon>
+                      </template>
+                    </n-button>
+                    <n-button ghost @click="zoomOut">
+                      <template #icon>
+                        <n-icon><zoom-out-icon /></n-icon>
+                      </template>
+                    </n-button>
+                    <n-dropdown :options="scaleOptions" @select="handleScaleSelect">
+                      <n-button ghost>{{ Math.round(currentScale * 100) }}%</n-button>
+                    </n-dropdown>
+                  </n-button-group>
+                </n-space>
+              </div>
+            </n-layout-footer>
+          </n-layout>
+        </n-layout>
+      </n-layout>
+    </div>
+    <!-- 新建页面模态框 -->
+    <n-modal v-model:show="showCreatePageModal" preset="card" :title="createModalTitle" style="width: 400px">
+      <n-form ref="formRef" :model="formValue" :rules="rules">
+        <n-form-item label="插入位置" path="position">
+          <n-radio-group v-model:value="formValue.position">
+            <n-radio key="before" value="before">在当前页前</n-radio>
+            <n-radio key="after" value="after">在当前页后</n-radio>
+          </n-radio-group>
+        </n-form-item>
+        <n-form-item label="页面方向" path="orientation">
+          <n-radio-group v-model:value="formValue.orientation">
+            <n-radio key="portrait" value="portrait">纵向</n-radio>
+            <n-radio key="landscape" value="landscape">横向</n-radio>
+          </n-radio-group>
+        </n-form-item>
+        <n-form-item label="页面大小" path="pageSize">
+          <n-select v-model:value="formValue.pageSize" :options="pageSizeOptions" />
+        </n-form-item>
+        <n-form-item label="上传图片" path="image">
+          <n-upload accept="image/*" :max="1" :default-upload="false" @change="handleImageChange">
+            <n-button>选择图片</n-button>
+          </n-upload>
+        </n-form-item>
+        <n-form-item label="图片拟合" path="imageFit">
+          <n-radio-group v-model:value="formValue.imageFit">
+            <n-radio key="contain" value="contain">保持比例</n-radio>
+            <n-radio key="fill" value="fill">填充页面</n-radio>
+          </n-radio-group>
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showCreatePageModal = false">取消</n-button>
+          <n-button type="primary" @click="handleCreatePage" :loading="creating">
+            确定
           </n-button>
         </n-space>
-      </n-layout-header>
-      <n-layout position="absolute" style="top: 64px;" bordered has-sider>
-        <n-layout-sider id="pages" content-style="padding: 12px;" :native-scrollbar="false" bordered
-          collapse-mode="width" :collapsed-width="120" :width="200" @scroll="handleThumbnailScroll">
-          <div v-if="pagesData.length" class="thumbnails" ref="thumbnailsRef">
-            <div v-for="(page, index) in pagesData" :key="index" class="thumbnail"
-              :class="{ active: currentPage === index }" @click="selectPage(index)"
-              :ref="el => { if (el) thumbnailRefs[index] = el }">
-              <canvas :ref="el => { if (el) canvasRefs[index] = el }"></canvas>
-              <div class="page-number">第 {{ index + 1 }} 页</div>
-            </div>
-          </div>
-        </n-layout-sider>
-        <n-layout>
-          <n-layout id="content" content-style="padding: 0;" :native-scrollbar="false" bordered>
-            <div v-if="currentPdf" class="viewer">
-              <div class="pages-container"></div>
-            </div>
-            <div v-else class="empty-state">
-              <n-empty description="请选择PDF文件">
-                <template #extra>
-                  <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
-                    <n-button>选择文件</n-button>
-                  </n-upload>
-                </template>
-              </n-empty>
-            </div>
-          </n-layout>
-
-          <!-- 修改页脚布局 -->
-          <n-layout-footer position="absolute" style="height: 64px; padding: 24px" bordered>
-            <!-- 使用flex布局实现居中 -->
-            <div class="footer-container">
-              <n-space :size="48" justify="center" align="center">
-                <!-- 连续滚动开关 -->
-                <n-switch v-model:value="continuousScroll">
-                  <template #checked>连续滚动</template>
-                  <template #unchecked>单页显示</template>
-                </n-switch>
-
-                <!-- 翻页控制组 -->
-                <n-space v-if="currentPdf" align="center">
-                  <n-button ghost :disabled="currentPage <= 0" @click="prevPage">
-                    <template #icon>
-                      <n-icon><arrow-left-icon /></n-icon>
-                    </template>
-                  </n-button>
-                  <n-input-number v-model:value="displayPage" :min="1" :max="pagesData.length"
-                    :style="{ width: '80px' }" @update:value="handlePageChange" />
-                  <span>/ {{ pagesData.length }}</span>
-                  <n-button ghost :disabled="currentPage >= pagesData.length - 1" @click="nextPage">
-                    <template #icon>
-                      <n-icon><arrow-right-icon /></n-icon>
-                    </template>
-                  </n-button>
-                </n-space>
-
-                <!-- 缩放控制组 -->
-                <n-button-group v-if="currentPdf">
-                  <n-button ghost @click="zoomIn">
-                    <template #icon>
-                      <n-icon><zoom-in-icon /></n-icon>
-                    </template>
-                  </n-button>
-                  <n-button ghost @click="zoomOut">
-                    <template #icon>
-                      <n-icon><zoom-out-icon /></n-icon>
-                    </template>
-                  </n-button>
-                  <n-dropdown :options="scaleOptions" @select="handleScaleSelect">
-                    <n-button ghost>{{ Math.round(currentScale * 100) }}%</n-button>
-                  </n-dropdown>
-                </n-button-group>
-              </n-space>
-            </div>
-          </n-layout-footer>
-        </n-layout>
-
-      </n-layout>
-    </n-layout>
-  </div>
-  <!-- 新建页面模态框 -->
-  <n-modal v-model:show="showCreatePageModal" preset="card" :title="createModalTitle" style="width: 400px">
-    <n-form ref="formRef" :model="formValue" :rules="rules">
-      <n-form-item label="插入位置" path="position">
-        <n-radio-group v-model:value="formValue.position">
-          <n-radio key="before" value="before">在当前页前</n-radio>
-          <n-radio key="after" value="after">在当前页后</n-radio>
-        </n-radio-group>
-      </n-form-item>
-      <n-form-item label="页面方向" path="orientation">
-        <n-radio-group v-model:value="formValue.orientation">
-          <n-radio key="portrait" value="portrait">纵向</n-radio>
-          <n-radio key="landscape" value="landscape">横向</n-radio>
-        </n-radio-group>
-      </n-form-item>
-      <n-form-item label="页面大小" path="pageSize">
-        <n-select v-model:value="formValue.pageSize" :options="pageSizeOptions" />
-      </n-form-item>
-      <n-form-item label="上传图片" path="image">
-        <n-upload accept="image/*" :max="1" :default-upload="false" @change="handleImageChange">
-          <n-button>选择图片</n-button>
-        </n-upload>
-      </n-form-item>
-      <n-form-item label="图片拟合" path="imageFit">
-        <n-radio-group v-model:value="formValue.imageFit">
-          <n-radio key="contain" value="contain">保持比例</n-radio>
-          <n-radio key="fill" value="fill">填充页面</n-radio>
-        </n-radio-group>
-      </n-form-item>
-    </n-form>
-    <template #footer>
-      <n-space justify="end">
-        <n-button @click="showCreatePageModal = false">取消</n-button>
-        <n-button type="primary" @click="handleCreatePage" :loading="creating">
-          确定
-        </n-button>
-      </n-space>
-    </template>
-  </n-modal>
+      </template>
+    </n-modal>
+  </n-dialog-provider>
 </template>
 <script setup>
 import {
+  createDiscreteApi,
+  useDialog,
+  NDialogProvider,
   NLayout,
   NLayoutHeader,
   NLayoutSider,
@@ -726,13 +735,13 @@ const handleAddImagePage = () => {
   if (!currentPdf) return
   showCreatePageModal.value = true
   changeModalTitle4ImagePage()
-} 
+}
 
 const handleAddNewPage = () => {
   if (!currentPdf) return
   showCreatePageModal.value = true
   changeModalTitle4BlankPage()
-} 
+}
 
 // 处理图片选择
 const handleImageChange = ({ file }) => {
@@ -850,6 +859,59 @@ let isScrolling = false
 const handleThumbnailScroll = (e) => {
   // 移除整个函数内容，因为我们不需要缩略图滚动时影响大图
   // 如果将来需要记录当前可见缩略图，可以保留计算逻辑但不触发页面切换
+}
+
+
+// 添加全局 dialog API
+const { dialog } = createDiscreteApi(['dialog'])
+
+// 修改删除页面的处理函数，添加确认对话框
+const handleDeletePage = () => {
+  if (!currDoc || pagesData.value.length <= 1) return
+
+  if (!dialog) {
+    console.error('Dialog provider not found')
+    return
+  }
+  dialog.warning({
+    title: '确认删除',
+    content: '确定要删除当前页面吗？此操作不可恢复。',
+    positiveText: '确定',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        // 获取当前文档的二进制数据
+        const existingPdfBytes = await currentPdf.value.getData()
+
+        // 使用 pdf-lib 加载当前文档
+        const pdfDoc = await PDFDocument.load(existingPdfBytes)
+
+        // 删除当前页面
+        pdfDoc.removePage(currentPage.value)
+
+        // 保存修改后的文档
+        const modifiedPdfBytes = await pdfDoc.save()
+
+        // 计算删除后应该跳转到哪一页
+        const targetPage = Math.min(currentPage.value, pdfDoc.getPageCount() - 1)
+
+        // 更新文档
+        await handleDocUpdate(modifiedPdfBytes, targetPage)
+
+        // 如果删除后还有页面，选择目标页面
+        if (pdfDoc.getPageCount() > 0) {
+          await selectPage(targetPage)
+        }
+
+      } catch (error) {
+        console.error('删除页面时发生错误:', error)
+        dialog.error({
+          title: '错误',
+          content: '删除页面时发生错误，请重试',
+        })
+      }
+    }
+  })
 }
 
 // 处理保存文件
