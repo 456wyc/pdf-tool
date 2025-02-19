@@ -84,11 +84,31 @@
                 <div class="pages-container"></div>
               </div>
               <div v-else class="empty-state">
-                <n-empty description="请选择PDF文件">
+                <!-- <n-empty description="请选择PDF文件">
                   <template #extra>
                     <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
                       <n-button>选择文件</n-button>
                     </n-upload>
+                  </template>
+                </n-empty> -->
+                <n-empty description="开始创建或打开PDF文件">
+                  <template #extra>
+                    <n-space vertical>
+                      <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
+                        <n-button type="primary">
+                          <template #icon>
+                            <n-icon><pdf-icon /></n-icon>
+                          </template>
+                          打开PDF文件
+                        </n-button>
+                      </n-upload>
+                      <n-button @click="handleCreateNewPDF">
+                        <template #icon>
+                          <n-icon><document-add-icon /></n-icon>
+                        </template>
+                        新建PDF文件
+                      </n-button>
+                    </n-space>
                   </template>
                 </n-empty>
               </div>
