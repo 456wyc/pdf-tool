@@ -54,7 +54,7 @@
         </n-space>
       </n-layout-header>
       <n-layout position="absolute" style="top: 64px;" bordered has-sider>
-        <n-layout-sider id="pages" content-style="padding: 24px;" :native-scrollbar="false" bordered
+        <n-layout-sider id="pages" content-style="padding: 12px;" :native-scrollbar="false" bordered
           collapse-mode="width" :collapsed-width="120" :width="200" @scroll="handleThumbnailScroll">
           <div v-if="pagesData.length" class="thumbnails" ref="thumbnailsRef">
             <div v-for="(page, index) in pagesData" :key="index" class="thumbnail"
@@ -248,23 +248,23 @@ const handleFileChange = async ({ file }) => {
   // 清理现有的缩略图引用
   canvasRefs.value = {}
   thumbnailRefs.value = {}
-  
+
   const reader = new FileReader()
   reader.onload = async (e) => {
     try {
       const arrayBuffer = e.target.result
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       const pdfDoc = await loadingTask.promise;
-      
+
       // 重置状态
       currentPdf.value = pdfDoc
       currDoc = pdfDoc
       pagesData.value = Array(pdfDoc.numPages).fill(null)
       currentPage.value = 0
-      
+
       // 等待 DOM 更新
       await nextTick()
-      
+
       // 初始化观察器（在清理旧观察器后）
       if (pageObserver.value) {
         pageObserver.value.disconnect()
@@ -273,7 +273,7 @@ const handleFileChange = async ({ file }) => {
         thumbnailObserver.value.disconnect()
       }
       initObservers()
-      
+
       // 清空并重新渲染缩略图容器
       const thumbnailsContainer = thumbnailsRef.value
       if (thumbnailsContainer) {
@@ -317,19 +317,19 @@ const renderThumbnail = async (pageIndex) => {
 
     const page = await currDoc.getPage(pageIndex + 1)
     const originalViewport = page.getViewport({ scale: 1.0 })
-    
+
     // 计算缩略图的合适缩放比例
     const maxWidth = 150 // 设置缩略图的最大宽度
     const scale = maxWidth / originalViewport.width
-    
-    const viewport = page.getViewport({ 
+
+    const viewport = page.getViewport({
       scale: scale,
-      rotation: page.rotate || 0 
+      rotation: page.rotate || 0
     })
 
     canvas.width = viewport.width
     canvas.height = viewport.height
-    
+
     const context = canvas.getContext('2d', { alpha: false })
     context.fillStyle = 'white'
     context.fillRect(0, 0, canvas.width, canvas.height)
@@ -356,22 +356,22 @@ const pageRenderLocks = new Map()
 // 修改 renderPageContent 函数
 const renderPageContent = async (pageIndex, container) => {
   if (!currDoc) return
-  
+
   // 检查是否已经渲染完成
   if (container.dataset.rendered === 'true') return
-  
+
   // 检查是否正在渲染
   if (pageRenderLocks.get(pageIndex)) return
-  
+
   const canvas = container.querySelector('canvas')
   if (!canvas) return
 
   try {
     // 设置渲染锁
     pageRenderLocks.set(pageIndex, true)
-    
+
     const page = await currDoc.getPage(pageIndex + 1)
-    const viewport = page.getViewport({ 
+    const viewport = page.getViewport({
       scale: currentScale.value,
       rotation: page.rotate || 0 // 使用页面原始旋转角度，如果没有则默认为0
     })
@@ -394,7 +394,7 @@ const renderPageContent = async (pageIndex, container) => {
 
     // 等待渲染完成
     await page.render(renderContext).promise
-    
+
     // 标记渲染完成
     container.dataset.rendered = 'true'
   } catch (error) {
@@ -422,7 +422,7 @@ const renderPages = async () => {
       const pageContainer = document.createElement('div')
       pageContainer.className = 'page-placeholder'
       pageContainer.dataset.pageIndex = i
-      
+
       const canvas = document.createElement('canvas')
       canvas.className = 'page-canvas'
       pageContainer.appendChild(canvas)
@@ -445,12 +445,12 @@ const renderPages = async () => {
     const pageContainer = document.createElement('div')
     pageContainer.className = 'page-placeholder'
     pageContainer.dataset.pageIndex = currentPage.value
-    
+
     const canvas = document.createElement('canvas')
     canvas.className = 'page-canvas'
     pageContainer.appendChild(canvas)
     container.appendChild(pageContainer)
-    
+
     // 立即渲染当前页面
     await renderPageContent(currentPage.value, pageContainer)
   }
@@ -604,10 +604,10 @@ const handleCreatePage = async () => {
 
     // 获取当前文档的二进制数据
     const existingPdfBytes = await currentPdf.value.getData()
-    
+
     // 使用 pdf-lib 创建新文档
     const pdfDoc = await PDFDocument.load(existingPdfBytes)
-    
+
     // 获取页面尺寸
     let pageSize = PageSizes[formValue.pageSize]
     if (formValue.orientation === 'landscape') {
@@ -615,10 +615,10 @@ const handleCreatePage = async () => {
     }
 
     // 插入空白页
-    const insertIndex = formValue.position === 'before' ? 
-      currentPage.value : 
+    const insertIndex = formValue.position === 'before' ?
+      currentPage.value :
       currentPage.value + 1
-    
+
     pdfDoc.insertPage(insertIndex, pageSize)
 
     // 保存修改后的文档
@@ -628,14 +628,14 @@ const handleCreatePage = async () => {
     const loadingTask = pdfjsLib.getDocument({ data: modifiedPdfBytes })
     currentPdf.value = await loadingTask.promise
     currDoc = currentPdf.value
-    
+
     // 更新页面数组
     pagesData.value = Array(currDoc.numPages).fill(null)
 
     // 重置渲染状态
     canvasRefs.value = {}
     thumbnailRefs.value = {}
-    
+
     // 清理观察器
     pageObserver.value?.disconnect()
     thumbnailObserver.value?.disconnect()
@@ -650,7 +650,7 @@ const handleCreatePage = async () => {
     if (thumbnailsRef.value) {
       thumbnailsRef.value.innerHTML = ''
     }
-    
+
     const pagesContainer = document.querySelector('.pages-container')
     if (pagesContainer) {
       pagesContainer.innerHTML = ''
@@ -821,19 +821,19 @@ const renderThumbnails = async () => {
 
       const canvas = document.createElement('canvas')
       thumbnail.appendChild(canvas)
-      
+
       const pageNumber = document.createElement('div')
       pageNumber.className = 'page-number'
       pageNumber.textContent = `第 ${i + 1} 页`
       thumbnail.appendChild(pageNumber)
-      
+
       container.appendChild(thumbnail)
       canvasRefs.value[i] = canvas
       thumbnailRefs.value[i] = thumbnail
 
       // 为每个缩略图添加点击事件
       thumbnail.addEventListener('click', () => selectPage(i))
-      
+
       // 将缩略图添加到观察器
       thumbnailObserver.value?.observe(thumbnail)
     }
@@ -866,17 +866,18 @@ const renderingQueue = new Set()
   gap: 16px;
   height: 100%;
   overflow-y: auto;
-  padding: 0 12px;
+  padding: 12px;
 
-  .thumbnail {
+  :deep(.thumbnail) {
     cursor: pointer;
-    padding: 8px;
     border-radius: 4px;
     background-color: white;
     border: 1px solid #e5e5e5;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     transition: all 0.2s ease;
-    width: 100%;
+    width: 100%; // 确保缩略图容器占满宽度
+    padding: 8px; // 移动内边距到容器层级
+    box-sizing: border-box; // 确保padding不会增加实际宽度
 
     canvas {
       width: 100%;
@@ -884,6 +885,10 @@ const renderingQueue = new Set()
       display: block;
       background-color: white;
       border-radius: 2px;
+      // 移除canvas的padding，改为更细致的阴影效果
+      box-shadow: 
+        0 1px 2px rgba(0, 0, 0, 0.1),
+        0 2px 4px rgba(0, 0, 0, 0.05);
     }
 
     .page-number {
@@ -891,16 +896,21 @@ const renderingQueue = new Set()
       margin-top: 8px;
       font-size: 12px;
       color: #666;
+      padding: 4px 0;
     }
 
     &:hover {
       transform: translateY(-2px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      box-shadow: 
+        0 4px 8px rgba(0, 0, 0, 0.15),
+        0 8px 16px rgba(0, 0, 0, 0.1);
     }
 
     &.active {
       border-color: #18a058;
-      box-shadow: 0 0 0 2px rgba(24, 160, 88, 0.2);
+      box-shadow: 
+        0 0 0 2px rgba(24, 160, 88, 0.2),
+        0 4px 8px rgba(0, 0, 0, 0.1);
     }
   }
 }
@@ -914,32 +924,49 @@ const renderingQueue = new Set()
   padding: 20px;
   background-color: #f5f5f5;
 
-  .pages-container {
+  :deep(.pages-container) {
     display: flex;
     flex-direction: column;
     gap: 20px;
     align-items: center;
     width: fit-content;
 
-    canvas {
-      max-width: 100%;
-      height: auto;
-      padding: 20px;
+    .page-placeholder {
+      min-height: 200px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
       background-color: white;
-      border: 1px solid #e5e5e5;
+      margin-bottom: 20px;
+      padding: 20px;
       border-radius: 4px;
+      // 添加纸张效果
+      border: 1px solid #d9d9d9;
       box-shadow:
-        0 1px 3px rgba(0, 0, 0, 0.1),
-        0 4px 6px rgba(0, 0, 0, 0.05),
-        0 10px 20px rgba(0, 0, 0, 0.04);
-      transition: transform 0.2s, box-shadow 0.2s;
+        0 1px 4px rgba(0, 0, 0, 0.15),
+        0 6px 12px rgba(0, 0, 0, 0.1),
+        0 12px 24px rgba(0, 0, 0, 0.05);
+
+      canvas {
+        max-width: 100%;
+        height: auto;
+        background-color: white;
+        transition: all 0.3s ease;
+      }
+
+      &:not([data-rendered="true"]) {
+        &::after {
+          content: "加载中...";
+          color: #999;
+        }
+      }
 
       &:hover {
         transform: translateY(-2px);
         box-shadow:
-          0 2px 4px rgba(0, 0, 0, 0.12),
-          0 6px 8px rgba(0, 0, 0, 0.07),
-          0 12px 24px rgba(0, 0, 0, 0.05);
+          0 2px 6px rgba(0, 0, 0, 0.2),
+          0 8px 16px rgba(0, 0, 0, 0.15),
+          0 16px 32px rgba(0, 0, 0, 0.1);
       }
     }
   }
@@ -966,7 +993,7 @@ const renderingQueue = new Set()
   align-items: center;
   background-color: #f5f5f5;
   margin-bottom: 20px;
-  
+
   &:not([data-rendered="true"]) {
     &::after {
       content: "加载中...";
