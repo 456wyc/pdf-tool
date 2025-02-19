@@ -325,6 +325,7 @@ const zoomOut = () => {
   // renderPage(currentPage.value)
 }
 
+
 const handleScaleSelect = async (key) => {
   if (!currDoc) return
 
@@ -421,7 +422,7 @@ const handleFileChange = async ({ file }) => {
   }
 }
 
-// 添加新建PDF文件的处理函数
+// 新建PDF文件的处理函数
 const handleCreateNewPDF = async () => {
   try {
     // 创建新的空白PDF文档
@@ -509,6 +510,7 @@ const handleCreateNewPDF = async () => {
   }
 }
 
+ // 处理PDF文件更新
 const handleDocUpdate = async (pdfDocBuff, goto = 0) => {
   if (!pdfDocBuff) return
 
@@ -570,10 +572,10 @@ const handleDocUpdate = async (pdfDocBuff, goto = 0) => {
   }
 }
 
-// 添加一个渲染锁，防止并发渲染
+// 渲染锁，防止并发渲染
 const renderingLocks = new Map()
 
-// 修改 renderThumbnail 函数
+// 渲染缩略图
 const renderThumbnail = async (pageIndex) => {
   if (!currDoc || !canvasRefs.value[pageIndex]) return
   if (renderingQueue.has(pageIndex)) return
@@ -625,10 +627,10 @@ const renderThumbnail = async (pageIndex) => {
   }
 }
 
-// 添加渲染锁Map
+// 渲染锁Map
 const pageRenderLocks = new Map()
 
-// 修改 renderPageContent 函数
+// 渲染页面内容
 const renderPageContent = async (pageIndex, container) => {
   if (!currDoc) return
 
@@ -683,7 +685,7 @@ const renderPageContent = async (pageIndex, container) => {
   }
 }
 
-// 修改 renderPages 函数
+// 渲染页面
 const renderPages = async () => {
   if (!currentPdf.value) return
 
@@ -734,7 +736,7 @@ const renderPages = async () => {
   }
 }
 
-// 添加获取可见页面索引的辅助函数
+// 获取可见页面索引的辅助函数
 const getVisiblePageIndexes = () => {
   const container = document.querySelector('.viewer')
   if (!container) return []
@@ -753,7 +755,7 @@ const getVisiblePageIndexes = () => {
   return visibleIndexes
 }
 
-// 修改 selectPage 函数
+// 选择页面
 const selectPage = async (index) => {
   if (index === currentPage.value) return // 如果是同一页，不需要重新渲染
   
@@ -878,7 +880,7 @@ onMounted(() => {
   }
 })
 
-// 添加对缩放的监听
+// 缩放监听
 watch(currentScale, () => {
   renderPages()
 })
@@ -950,7 +952,7 @@ const handleImageChange = ({ file }) => {
   }
 }
 
-// 修改处理创建页面的函数
+// 处理创建页面的函数
 const handleCreatePage = async () => {
   if (!currDoc) return
 
@@ -1105,7 +1107,7 @@ const handleRotateSelect = async (key) => {
   await handleRotatePage(key)
 }
 
-// 添加旋转页面的处理函数
+// 旋转页面的处理函数
 const handleRotatePage = async (rotationAngle = 90) => {
   if (!currDoc) return
 
@@ -1176,7 +1178,7 @@ const handleRotatePage = async (rotationAngle = 90) => {
   }
 }
 
-// 添加 degrees 工具函数
+// degrees 工具函数
 const degrees = (degrees) => {
   return {
     type: 'degrees',
@@ -1185,12 +1187,19 @@ const degrees = (degrees) => {
 }
 
 
-// 添加编辑工具相关的状态
+// 编辑工具相关的状态
 const editingMode = ref('none') // none, text, image, shape, drawing
 const isDrawing = ref(false)
 const currentDrawingPath = ref([])
 const annotations = ref([])
 const currentShape = ref(null) // 添加当前图形类型的状态
+
+// 图片注释相关状态
+const imageAnnotations = ref([])
+const selectedImage = ref(null)
+const isResizing = ref(false)
+const isRotating = ref(false)
+const startPoint = ref({ x: 0, y: 0 })
 
 // 下拉菜单选项
 const textOptions = [
@@ -1240,7 +1249,6 @@ const handleTextSelect = (key) => {
 
 // 处理图片工具选择
 const handleImageSelect = async (key) => {
-  editingMode.value = 'image'
   if (key === 'file') {
     // 触发文件选择
     const input = document.createElement('input')
@@ -1249,7 +1257,7 @@ const handleImageSelect = async (key) => {
     input.onchange = async (e) => {
       const file = e.target.files[0]
       if (file) {
-        await addImageAnnotation(file)
+        await addImageToPdf(file)
       }
     }
     input.click()
@@ -1260,7 +1268,7 @@ const handleImageSelect = async (key) => {
         const imageType = item.types.find(type => type.startsWith('image/'))
         if (imageType) {
           const blob = await item.getType(imageType)
-          await addImageAnnotation(blob)
+          await addImageToPdf(blob)
           break
         }
       }
@@ -1270,6 +1278,98 @@ const handleImageSelect = async (key) => {
   }
 }
 
+// 新增添加图片到PDF的函数
+const addImageToPdf = async (imageFile) => {
+  if (!currDoc) return
+
+  try {
+    // 获取当前文档的二进制数据
+    const existingPdfBytes = await currentPdf.value.getData()
+    const pdfDoc = await PDFDocument.load(existingPdfBytes)
+    const pages = pdfDoc.getPages()
+    const page = pages[currentPage.value]
+    
+    // 读取图片数据
+    const imageBytes = await new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(new Uint8Array(reader.result))
+      reader.readAsArrayBuffer(imageFile)
+    })
+
+    // 根据图片类型嵌入到PDF
+    let image
+    if (imageFile.type === 'image/jpeg') {
+      image = await pdfDoc.embedJpg(imageBytes)
+    } else if (imageFile.type === 'image/png') {
+      image = await pdfDoc.embedPng(imageBytes)
+    } else {
+      throw new Error('不支持的图片格式')
+    }
+
+    // 获取页面尺寸
+    const { width: pageWidth, height: pageHeight } = page.getSize()
+
+    // 计算图片绘制尺寸和位置
+    const maxWidth = pageWidth * 0.8 // 最大宽度为页面宽度的80%
+    const scale = Math.min(1, maxWidth / image.width)
+    const drawWidth = image.width * scale
+    const drawHeight = image.height * scale
+
+    // 计算居中位置
+    const x = (pageWidth - drawWidth) / 2
+    const y = (pageHeight - drawHeight) / 2
+
+    // 在页面上绘制图片
+    page.drawImage(image, {
+      x,
+      y,
+      width: drawWidth,
+      height: drawHeight
+    })
+
+    // 保存修改后的文档
+    const modifiedPdfBytes = await pdfDoc.save()
+
+    // 更新当前文档
+    const loadingTask = pdfjsLib.getDocument({ data: modifiedPdfBytes })
+    const newPdfDoc = await loadingTask.promise
+    currentPdf.value = newPdfDoc
+    currDoc = newPdfDoc
+
+    // 标记需要保存
+    needsSaving.value = true
+
+    // 重新渲染当前页面
+    const container = document.querySelector('.pages-container')
+    if (container) {
+      const pageContainer = container.children[currentPage.value]
+      if (pageContainer) {
+        // 清除渲染状态
+        pageContainer.dataset.rendered = 'false'
+        // 重新渲染页面内容
+        await renderPageContent(currentPage.value, pageContainer)
+      }
+    }
+
+    // 重新渲染缩略图
+    await renderThumbnail(currentPage.value)
+
+    // 提示成功
+    /* dialog.success({
+      title: '成功',
+      content: '图片已添加到PDF',
+      positiveText: '确定'
+    }) */
+
+  } catch (error) {
+    console.error('添加图片到PDF时发生错误:', error)
+    dialog.error({
+      title: '错误',
+      content: '添加图片失败，请重试',
+      positiveText: '确定'
+    })
+  }
+}
 
 // 处理图形工具选择
 const handleShapeSelect = (key) => {
@@ -1312,7 +1412,7 @@ const shapeStart = ref(null)
 const shapeEnd = ref(null)
 const isDrawingShape = ref(false)
 
-/ 开始绘制图形
+// 开始绘制图形
 const startShapeDrawing = (e) => {
   if (editingMode.value !== 'shape') return
 
@@ -1759,16 +1859,212 @@ const addTextAnnotation = (text, style) => {
 const addImageAnnotation = async (imageFile) => {
   try {
     const url = URL.createObjectURL(imageFile)
-    annotations.value.push({
-      type: 'image',
-      url,
-      position: { x: 100, y: 100 }, // 默认位置，可拖动调整
-      size: { width: 200, height: 200 } // 默认尺寸，可调整
-    })
-    renderAnnotations()
+    const img = new Image()
+    
+    img.onload = () => {
+      // 计算初始大小,确保不会太大
+      const maxWidth = 300
+      const scale = Math.min(1, maxWidth / img.width)
+      const width = img.width * scale
+      const height = img.height * scale
+
+      // 获取当前页面的canvas
+      const canvas = getCurrentPageCanvas()
+      const rect = canvas.getBoundingClientRect()
+      
+      // 计算中心位置
+      const x = (rect.width - width) / 2
+      const y = (rect.height - height) / 2
+
+      const newImage = {
+        id: Date.now(), // 用于唯一标识
+        url,
+        position: { x, y },
+        size: { width, height },
+        rotation: 0,
+        originalSize: { width: img.width, height: img.height }
+      }
+
+      imageAnnotations.value.push(newImage)
+      selectedImage.value = newImage
+      renderImageAnnotations()
+    }
+
+    img.src = url
   } catch (error) {
-    console.error('添加图片注释失败:', error)
+    console.error('添加图片失败:', error)
   }
+}
+
+
+// 渲染图片注释
+const renderImageAnnotations = () => {
+  const container = document.querySelector('.pages-container')
+  if (!container) return
+
+  // 获取或创建注释层
+  let annotationsLayer = container.querySelector('.annotations-layer')
+  if (!annotationsLayer) {
+    annotationsLayer = document.createElement('div')
+    annotationsLayer.className = 'annotations-layer'
+    container.appendChild(annotationsLayer)
+  }
+
+  // 清空现有内容
+  annotationsLayer.innerHTML = ''
+
+  // 渲染所有图片
+  imageAnnotations.value.forEach(image => {
+    const imageContainer = document.createElement('div')
+    imageContainer.className = 'image-annotation'
+    imageContainer.style.cssText = `
+      position: absolute;
+      left: ${image.position.x}px;
+      top: ${image.position.y}px;
+      width: ${image.size.width}px;
+      height: ${image.size.height}px;
+      transform: rotate(${image.rotation}deg);
+    `
+
+    // 添加图片元素
+    const img = document.createElement('img')
+    img.src = image.url
+    img.style.cssText = `
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    `
+    imageContainer.appendChild(img)
+
+    // 添加控制点
+    if (selectedImage.value?.id === image.id) {
+      addControlPoints(imageContainer)
+    }
+
+    // 添加事件监听
+    setupImageEventListeners(imageContainer, image)
+
+    annotationsLayer.appendChild(imageContainer)
+  })
+}
+
+// 添加控制点
+const addControlPoints = (container) => {
+  // 添加8个控制点和一个旋转控制点
+  const positions = [
+    'nw', 'n', 'ne',
+    'w', 'e',
+    'sw', 's', 'se'
+  ]
+
+  positions.forEach(pos => {
+    const handle = document.createElement('div')
+    handle.className = `resize-handle ${pos}`
+    container.appendChild(handle)
+  })
+
+  // 添加旋转控制点
+  const rotateHandle = document.createElement('div')
+  rotateHandle.className = 'rotate-handle'
+  container.appendChild(rotateHandle)
+}
+
+
+// 设置图片事件监听
+const setupImageEventListeners = (container, image) => {
+  let isDragging = false
+  let startX = 0
+  let startY = 0
+
+  container.addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('resize-handle')) {
+      startResize(e, image, e.target.classList[1])
+    } else if (e.target.classList.contains('rotate-handle')) {
+      startRotate(e, image)
+    } else {
+      isDragging = true
+      startX = e.clientX - image.position.x
+      startY = e.clientY - image.position.y
+      selectedImage.value = image
+      renderImageAnnotations()
+    }
+  })
+
+  document.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      image.position.x = e.clientX - startX
+      image.position.y = e.clientY - startY
+      renderImageAnnotations()
+    }
+  })
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false
+  })
+}
+
+
+// 开始调整大小
+const startResize = (e, image, direction) => {
+  isResizing.value = true
+  startPoint.value = { x: e.clientX, y: e.clientY }
+
+  const onMouseMove = (e) => {
+    const dx = e.clientX - startPoint.value.x
+    const dy = e.clientY - startPoint.value.y
+
+    // 根据不同方向调整大小
+    if (direction.includes('e')) image.size.width += dx
+    if (direction.includes('w')) {
+      image.size.width -= dx
+      image.position.x += dx
+    }
+    if (direction.includes('s')) image.size.height += dy
+    if (direction.includes('n')) {
+      image.size.height -= dy
+      image.position.y += dy
+    }
+
+    startPoint.value = { x: e.clientX, y: e.clientY }
+    renderImageAnnotations()
+  }
+
+  const onMouseUp = () => {
+    isResizing.value = false
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
+// 开始旋转
+const startRotate = (e, image) => {
+  isRotating.value = true
+  const rect = e.target.parentElement.getBoundingClientRect()
+  const center = {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2
+  }
+
+  const onMouseMove = (e) => {
+    const angle = Math.atan2(
+      e.clientY - center.y,
+      e.clientX - center.x
+    ) * 180 / Math.PI
+    image.rotation = angle
+    renderImageAnnotations()
+  }
+
+  const onMouseUp = () => {
+    isRotating.value = false
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
 }
 
 // 渲染所有注释
@@ -2223,6 +2519,61 @@ const renderingQueue = new Set()
       font-size: 14px;
       white-space: nowrap; // 防止文本换行
     }
+  }
+}
+
+.annotations-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+
+  .image-annotation {
+    position: absolute;
+    cursor: move;
+    pointer-events: all;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .resize-handle {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: white;
+      border: 1px solid #333;
+      pointer-events: all;
+    }
+
+    .rotate-handle {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background: white;
+      border: 1px solid #333;
+      border-radius: 50%;
+      top: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      cursor: pointer;
+      pointer-events: all;
+    }
+
+    /* 控制点位置 */
+    .nw { top: -4px; left: -4px; cursor: nw-resize; }
+    .n  { top: -4px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
+    .ne { top: -4px; right: -4px; cursor: ne-resize; }
+    .w  { top: 50%; left: -4px; transform: translateY(-50%); cursor: w-resize; }
+    .e  { top: 50%; right: -4px; transform: translateY(-50%); cursor: e-resize; }
+    .sw { bottom: -4px; left: -4px; cursor: sw-resize; }
+    .s  { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
+    .se { bottom: -4px; right: -4px; cursor: se-resize; }
   }
 }
 </style>
