@@ -26,12 +26,28 @@
                 </n-button>
               </n-button-group>
               <n-button-group>
+                <!-- 旋转页面 -->
+                <!-- <n-button ghost @click="handleRotatePage(90)" :disabled="!currentPdf">
+                  <template #icon>
+                    <n-icon><rotate-icon /></n-icon>
+                  </template>
+                  旋转90°
+                </n-button> -->
+                <n-dropdown :options="rotateOptions" trigger="hover" @select="handleRotateSelect"
+                  :disabled="!currentPdf">
+                  <n-button ghost>
+                    <template #icon>
+                      <n-icon><rotate-icon /></n-icon>
+                    </template>
+                    旋转页面
+                  </n-button>
+                </n-dropdown>
                 <!-- 删除页面 -->
                 <n-button ghost @click="handleDeletePage" :disabled="!currentPdf">
                   <template #icon>
                     <n-icon><delete-icon /></n-icon>
                   </template>
-                  删除当前页面
+                  删除页面
                 </n-button>
                 <!-- 插入图片 -->
                 <n-button ghost @click="handleAddImagePage" :disabled="!currentPdf">
@@ -39,13 +55,6 @@
                     <n-icon><image-icon /></n-icon>
                   </template>
                   插入图片
-                </n-button>
-                <!-- 旋转页面 -->
-                <n-button ghost :disabled="!currentPdf">
-                  <template #icon>
-                    <n-icon><rotate-icon /></n-icon>
-                  </template>
-                  旋转当前页面
                 </n-button>
                 <!-- 新建页面 -->
                 <n-button ghost @click="handleAddNewPage" :disabled="!currentPdf">
@@ -973,6 +982,117 @@ const handleCreatePage = async () => {
     creating.value = false
     // 清理图片文件
     formValue.imageFile = null
+  }
+}
+
+// 旋转选项
+const rotateOptions = [
+  {
+    label: '向右旋转90°',
+    key: 90
+  },
+  {
+    label: '向右旋转180°',
+    key: 180
+  },
+  {
+    label: '向右旋转270°',
+    key: 270
+  },
+  {
+    label: '向右旋转360°',
+    key: 360
+  }
+]
+
+
+// 处理旋转选择
+const handleRotateSelect = async (key) => {
+  if (!currDoc) return
+
+  if (key === 'custom') {
+    // 显示自定义角度输入对话框
+    dialog.warning({
+      title: '自定义旋转角度',
+      content: () => {
+        return h(NInputNumber, {
+          value: 0,
+          min: -360,
+          max: 360,
+          step: 1,
+          onChange: (value) => {
+            customRotationAngle = value
+          }
+        })
+      },
+      positiveText: '确定',
+      negativeText: '取消',
+      onPositiveClick: async () => {
+        if (customRotationAngle !== null) {
+          await handleRotatePage(customRotationAngle)
+        }
+      }
+    })
+    return
+  }
+
+  // 直接旋转指定角度
+  await handleRotatePage(key)
+}
+
+// 添加旋转页面的处理函数
+const handleRotatePage = async (rotationAngle = 90) => {
+  if (!currDoc) return
+
+  try {
+    // 获取当前文档的二进制数据
+    const existingPdfBytes = await currentPdf.value.getData()
+
+    // 使用 pdf-lib 加载当前文档
+    const pdfDoc = await PDFDocument.load(existingPdfBytes)
+
+    // 获取当前页面
+    const pages = pdfDoc.getPages()
+    const currentPageIndex = currentPage.value
+    const page = pages[currentPageIndex]
+
+    // 获取当前旋转角度
+    const currentRotation = page.getRotation().angle || 0
+
+    // 计算新的旋转角度
+    const newRotation = ((currentRotation + rotationAngle) % 360 + 360) % 360
+
+    // 设置新的旋转角度
+    page.setRotation(degrees(newRotation))
+
+    // 保存修改后的文档
+    const modifiedPdfBytes = await pdfDoc.save()
+
+    // 更新文档
+    await handleDocUpdate(modifiedPdfBytes, currentPageIndex)
+
+    // 提示成功
+    /* dialog.success({
+      title: '成功',
+      content: '页面已旋转',
+      positiveText: '确定'
+    }) */
+
+  } catch (error) {
+    console.error('旋转页面时发生错误:', error)
+    dialog.error({
+      title: '错误',
+      content: '旋转页面时发生错误，请重试',
+      positiveText: '确定'
+    })
+  }
+}
+
+// 添加 degrees 工具函数
+const degrees = (degrees) => {
+  return {
+    type: 'degrees',
+    angle: degrees
   }
 }
 
