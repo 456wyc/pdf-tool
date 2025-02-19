@@ -245,54 +245,73 @@ const handleFileChange = async ({ file }) => {
   if (!file.file) return
   console.log('pdf file', file.file)
 
-  // 清理现有的缩略图引用
-  canvasRefs.value = {}
-  thumbnailRefs.value = {}
-
-  const reader = new FileReader()
-  reader.onload = async (e) => {
-    try {
-      const arrayBuffer = e.target.result
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-      const pdfDoc = await loadingTask.promise;
-
-      // 重置状态
-      currentPdf.value = pdfDoc
-      currDoc = pdfDoc
-      pagesData.value = Array(pdfDoc.numPages).fill(null)
-      currentPage.value = 0
-
-      // 等待 DOM 更新
-      await nextTick()
-
-      // 初始化观察器（在清理旧观察器后）
-      if (pageObserver.value) {
-        pageObserver.value.disconnect()
-      }
-      if (thumbnailObserver.value) {
-        thumbnailObserver.value.disconnect()
-      }
-      initObservers()
-
-      // 清空并重新渲染缩略图容器
-      const thumbnailsContainer = thumbnailsRef.value
-      if (thumbnailsContainer) {
-        thumbnailsContainer.innerHTML = ''
-        await renderThumbnails()
-      }
-
-      // 渲染主视图
-      await renderPages()
-    } catch (error) {
-      console.error('加载PDF文件时发生错误:', error)
+  try {
+    // 清理现有状态
+    currentPdf.value = null
+    currDoc = null
+    pagesData.value = []
+    currentPage.value = 0
+    
+    // 清理缩略图相关状态
+    canvasRefs.value = {}
+    thumbnailRefs.value = {}
+    
+    // 清空缩略图容器
+    if (thumbnailsRef.value) {
+      thumbnailsRef.value.innerHTML = ''
     }
-  }
 
-  reader.onerror = (error) => {
-    console.error('读取文件时发生错误:', error)
-  }
+    // 清空主视图容器
+    const pagesContainer = document.querySelector('.pages-container')
+    if (pagesContainer) {
+      pagesContainer.innerHTML = ''
+    }
 
-  reader.readAsArrayBuffer(file.file)
+    // 断开现有观察器
+    pageObserver.value?.disconnect()
+    thumbnailObserver.value?.disconnect()
+
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        const arrayBuffer = e.target.result
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
+        const pdfDoc = await loadingTask.promise
+
+        // 设置新文档
+        currentPdf.value = pdfDoc
+        currDoc = pdfDoc
+        pagesData.value = Array(pdfDoc.numPages).fill(null)
+
+        // 等待 DOM 更新
+        await nextTick()
+
+        // 初始化新的观察器
+        initObservers()
+
+        // 重新渲染缩略图
+        await renderThumbnails()
+
+        // 渲染主视图
+        await renderPages()
+
+        // 选择第一页
+        await selectPage(0)
+
+      } catch (error) {
+        console.error('加载PDF文件时发生错误:', error)
+      }
+    }
+
+    reader.onerror = (error) => {
+      console.error('读取文件时发生错误:', error)
+    }
+
+    reader.readAsArrayBuffer(file.file)
+
+  } catch (error) {
+    console.error('处理文件时发生错误:', error)
+  }
 }
 
 // 添加一个渲染锁，防止并发渲染
