@@ -18,7 +18,7 @@
                   </n-button>
                 </n-upload>
                 <!-- 新建文件 -->
-                <n-button ghost>
+                <n-button ghost @click="handleCreateNewPDF">
                   <template #icon>
                     <n-icon><document-add-icon /></n-icon>
                   </template>
@@ -354,6 +354,93 @@ const handleFileChange = async ({ file }) => {
   }
 }
 
+// 添加新建PDF文件的处理函数
+const handleCreateNewPDF = async () => {
+  try {
+    // 创建新的空白PDF文档
+    const pdfDoc = await PDFDocument.create()
+
+    // 添加一个默认的A4空白页
+    pdfDoc.addPage(PageSizes.A4)
+
+    // 保存新文档
+    const pdfBytes = await pdfDoc.save()
+
+    // 清理现有状态
+    currentPdf.value = null
+    currDoc = null
+    pagesData.value = []
+    currentPage.value = 0
+
+    // 清理缩略图相关状态
+    canvasRefs.value = {}
+    thumbnailRefs.value = {}
+
+    // 清空缩略图容器
+    if (thumbnailsRef.value) {
+      thumbnailsRef.value.innerHTML = ''
+    }
+
+    // 清空主视图容器
+    const pagesContainer = document.querySelector('.pages-container')
+    if (pagesContainer) {
+      pagesContainer.innerHTML = ''
+    }
+
+    // 断开现有观察器
+    pageObserver.value?.disconnect()
+    thumbnailObserver.value?.disconnect()
+
+    try {
+      // 加载新创建的PDF文档
+      const loadingTask = pdfjsLib.getDocument({ data: pdfBytes })
+      const newPdfDoc = await loadingTask.promise
+
+      // 设置新文档
+      currentPdf.value = newPdfDoc
+      currDoc = newPdfDoc
+      pagesData.value = Array(newPdfDoc.numPages).fill(null)
+
+      // 等待 DOM 更新
+      await nextTick()
+
+      // 初始化新的观察器
+      initObservers()
+
+      // 重新渲染缩略图
+      await renderThumbnails()
+
+      // 渲染主视图
+      await renderPages()
+
+      // 选择第一页
+      await selectPage(0)
+
+      // 显示成功提示
+      dialog.success({
+        title: '成功',
+        content: '新的 PDF 文件已创建',
+        positiveText: '确定'
+      })
+
+    } catch (error) {
+      console.error('加载新PDF文件时发生错误:', error)
+      dialog.error({
+        title: '错误',
+        content: '创建新PDF文件时发生错误，请重试',
+        positiveText: '确定'
+      })
+    }
+
+  } catch (error) {
+    console.error('创建新PDF文件时发生错误:', error)
+    dialog.error({
+      title: '错误',
+      content: '创建新PDF文件时发生错误，请重试',
+      positiveText: '确定'
+    })
+  }
+}
 
 const handleDocUpdate = async (pdfDocBuff, goto = 0) => {
   if (!pdfDocBuff) return
