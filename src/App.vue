@@ -6,48 +6,55 @@
         <n-layout-header style="height: 64px; padding: 10px" bordered>
           <n-space justify="space-between" align="center">
             <!-- 左侧工具按钮组 -->
-            <n-space>
-              <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
+            <n-space :size="24">
+              <n-button-group>
+                <!-- 上传文件 -->
+                <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
+                  <n-button ghost>
+                    <template #icon>
+                      <n-icon><pdf-icon /></n-icon>
+                    </template>
+                    打开PDF文件
+                  </n-button>
+                </n-upload>
+                <!-- 新建文件 -->
                 <n-button ghost>
                   <template #icon>
-                    <n-icon><pdf-icon /></n-icon>
+                    <n-icon><document-add-icon /></n-icon>
                   </template>
-                  打开PDF文件
+                  新建PDF文件
                 </n-button>
-              </n-upload>
-              <n-button ghost>
-                <template #icon>
-                  <n-icon><pdf-icon /></n-icon>
-                </template>
-                新建PDF文件
-              </n-button>
-              <n-button ghost @click="handleDeletePage" :disabled="!currentPdf">
-                <template #icon>
-                  <n-icon><delete-icon /></n-icon>
-                </template>
-                删除当前页面
-              </n-button>
-
-              <n-button ghost @click="handleAddImagePage" :disabled="!currentPdf">
-                <template #icon>
-                  <n-icon><image-icon /></n-icon>
-                </template>
-                插入图片
-              </n-button>
-
-              <n-button ghost :disabled="!currentPdf">
-                <template #icon>
-                  <n-icon><rotate-icon /></n-icon>
-                </template>
-                旋转当前页面
-              </n-button>
-
-              <n-button ghost @click="handleAddNewPage" :disabled="!currentPdf">
-                <template #icon>
-                  <n-icon><add-icon /></n-icon>
-                </template>
-                新建页面
-              </n-button>
+              </n-button-group>
+              <n-button-group>
+                <!-- 删除页面 -->
+                <n-button ghost @click="handleDeletePage" :disabled="!currentPdf">
+                  <template #icon>
+                    <n-icon><delete-icon /></n-icon>
+                  </template>
+                  删除当前页面
+                </n-button>
+                <!-- 插入图片 -->
+                <n-button ghost @click="handleAddImagePage" :disabled="!currentPdf">
+                  <template #icon>
+                    <n-icon><image-icon /></n-icon>
+                  </template>
+                  插入图片
+                </n-button>
+                <!-- 旋转页面 -->
+                <n-button ghost :disabled="!currentPdf">
+                  <template #icon>
+                    <n-icon><rotate-icon /></n-icon>
+                  </template>
+                  旋转当前页面
+                </n-button>
+                <!-- 新建页面 -->
+                <n-button ghost @click="handleAddNewPage" :disabled="!currentPdf">
+                  <template #icon>
+                    <n-icon><add-icon /></n-icon>
+                  </template>
+                  新建页面
+                </n-button>
+              </n-button-group>
             </n-space>
 
             <!-- 右侧保存按钮 -->
@@ -193,7 +200,19 @@ import {
 } from 'naive-ui'
 import { ref, onMounted, nextTick, watch, reactive, computed, onUnmounted } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
-import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Add as AddIcon, Save as SaveIcon, ArrowLeft as ArrowLeftIcon, ArrowRight as ArrowRightIcon, DocumentPdf as PdfIcon, TrashCan as DeleteIcon, Image as ImageIcon, Rotate as RotateIcon } from '@vicons/carbon'
+import {
+  ZoomIn as ZoomInIcon,
+  DocumentAdd as DocumentAddIcon,
+  ZoomOut as ZoomOutIcon,
+  Add as AddIcon,
+  Save as SaveIcon,
+  ArrowLeft as ArrowLeftIcon,
+  ArrowRight as ArrowRightIcon,
+  DocumentPdf as PdfIcon,
+  TrashCan as DeleteIcon,
+  Image as ImageIcon,
+  Rotate as RotateIcon
+} from '@vicons/carbon'
 import { PDFDocument, PageSizes } from 'pdf-lib'
 
 console.log('pdfjsLib', pdfjsLib.version)
