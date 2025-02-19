@@ -25,6 +25,7 @@
                   新建PDF文件
                 </n-button>
               </n-button-group>
+              <!-- 文件编辑组 -->
               <n-button-group>
                 <!-- 旋转页面 -->
                 <!-- <n-button ghost @click="handleRotatePage(90)" :disabled="!currentPdf">
@@ -64,6 +65,46 @@
                   新建页面
                 </n-button>
               </n-button-group>
+              <!-- 页面编辑组 -->
+              <n-button-group>
+                <!-- 文字工具 -->
+                <n-dropdown :options="textOptions" :disabled="!currentPdf" trigger="hover" @select="handleTextSelect">
+                  <n-button ghost>
+                    <template #icon>
+                      <n-icon><add-text-icon /></n-icon>
+                    </template>
+                    添加文字
+                  </n-button>
+                </n-dropdown>
+
+                <!-- 图片工具 -->
+                <n-dropdown :options="imageOptions" :disabled="!currentPdf" trigger="hover" @select="handleImageSelect">
+                  <n-button ghost>
+                    <template #icon>
+                      <n-icon><image-icon /></n-icon>
+                    </template>
+                    插入图片
+                  </n-button>
+                </n-dropdown>
+
+                <!-- 图形工具 -->
+                <n-dropdown :options="shapeOptions" :disabled="!currentPdf" trigger="hover" @select="handleShapeSelect">
+                  <n-button ghost>
+                    <template #icon>
+                      <n-icon><add-shape-icon /></n-icon>
+                    </template>
+                    图形
+                  </n-button>
+                </n-dropdown>
+
+                <!-- 手写工具 -->
+                <n-button ghost :disabled="!currentPdf" @click="toggleDrawingMode">
+                  <template #icon>
+                    <n-icon><pen-icon /></n-icon>
+                  </template>
+                  手写
+                </n-button>
+              </n-button-group>
             </n-space>
 
             <!-- 右侧保存按钮 -->
@@ -93,13 +134,6 @@
                 <div class="pages-container"></div>
               </div>
               <div v-else class="empty-state">
-                <!-- <n-empty description="请选择PDF文件">
-                  <template #extra>
-                    <n-upload @change="handleFileChange" accept=".pdf" :show-file-list="false">
-                      <n-button>选择文件</n-button>
-                    </n-upload>
-                  </template>
-                </n-empty> -->
                 <n-empty description="开始创建或打开PDF文件">
                   <template #extra>
                     <n-space vertical>
@@ -225,9 +259,9 @@ import {
   NLayoutSider,
   NLayoutContent,
   NLayoutFooter,
-  NButton, NSpace, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon, NSwitch, NModal, NForm, NFormItem, NRadioGroup, NRadio, NSelect, NInputNumber
+  NButton, NSpace, NInput, NUpload, NEmpty, NButtonGroup, NDropdown, NIcon, NSwitch, NModal, NForm, NFormItem, NRadioGroup, NRadio, NSelect, NInputNumber
 } from 'naive-ui'
-import { ref, onMounted, nextTick, watch, reactive, computed, onUnmounted } from 'vue'
+import { ref, onMounted, nextTick, watch, reactive, computed, onUnmounted, h } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
 import {
   ZoomIn as ZoomInIcon,
@@ -240,12 +274,16 @@ import {
   DocumentPdf as PdfIcon,
   TrashCan as DeleteIcon,
   Image as ImageIcon,
-  Rotate as RotateIcon
+  Rotate as RotateIcon,
+  Pen as PenIcon,
 } from '@vicons/carbon'
-import { PDFDocument, PageSizes } from 'pdf-lib'
+import {
+  TextAddT24Filled as AddTextIcon,
+  Shapes24Regular as AddShapeIcon,
+} from '@vicons/fluent';
+import { PDFDocument, PageSizes, rgb } from 'pdf-lib';
 
 console.log('pdfjsLib', pdfjsLib.version)
-
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
   import.meta.url
@@ -446,11 +484,11 @@ const handleCreateNewPDF = async () => {
       await selectPage(0)
 
       // 显示成功提示
-      dialog.success({
+      /* dialog.success({
         title: '成功',
         content: '新的 PDF 文件已创建',
         positiveText: '确定'
-      })
+      }) */
 
     } catch (error) {
       console.error('加载新PDF文件时发生错误:', error)
@@ -1071,7 +1109,7 @@ const handleRotatePage = async (rotationAngle = 90) => {
       // 直接加载新文档而不清空现有状态
       const loadingTask = pdfjsLib.getDocument({ data: modifiedPdfBytes })
       const newPdfDoc = await loadingTask.promise
-      
+
       // 更新文档引用
       currentPdf.value = newPdfDoc
       currDoc = newPdfDoc
@@ -1117,6 +1155,603 @@ const degrees = (degrees) => {
     type: 'degrees',
     angle: degrees
   }
+}
+
+
+// 添加编辑工具相关的状态
+const editingMode = ref('none') // none, text, image, shape, drawing
+const isDrawing = ref(false)
+const currentDrawingPath = ref([])
+const annotations = ref([])
+const currentShape = ref(null) // 添加当前图形类型的状态
+
+// 下拉菜单选项
+const textOptions = [
+  { label: '普通文本', key: 'normal' },
+  { label: '标题文本', key: 'heading' },
+  { label: '注释文本', key: 'annotation' }
+]
+
+const imageOptions = [
+  { label: '从文件选择', key: 'file' },
+  { label: '从剪贴板粘贴', key: 'clipboard' }
+]
+
+const shapeOptions = [
+  { label: '矩形', key: 'rectangle' },
+  { label: '圆形', key: 'circle' },
+  { label: '箭头', key: 'arrow' },
+  { label: '直线', key: 'line' }
+]
+
+const tempTextContent = ref('') // 临时存储文本内容
+
+// 处理文本工具选择
+const handleTextSelect = (key) => {
+  editingMode.value = 'text'
+  // 显示文本编辑对话框
+  dialog.info({
+    title: '添加文本',
+    content: () => h(NInput, {
+      type: 'textarea',
+      placeholder: '请输入文本内容',
+      onChange: (value) => {
+        // 存储临时文本内容
+        tempTextContent.value = value
+      }
+    }),
+    positiveText: '确定',
+    negativeText: '取消',
+    onPositiveClick: () => {
+      if (tempTextContent.value) {
+        addTextAnnotation(tempTextContent.value, key)
+      }
+    }
+  })
+}
+
+
+// 处理图片工具选择
+const handleImageSelect = async (key) => {
+  editingMode.value = 'image'
+  if (key === 'file') {
+    // 触发文件选择
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = async (e) => {
+      const file = e.target.files[0]
+      if (file) {
+        await addImageAnnotation(file)
+      }
+    }
+    input.click()
+  } else if (key === 'clipboard') {
+    try {
+      const items = await navigator.clipboard.read()
+      for (const item of items) {
+        const imageType = item.types.find(type => type.startsWith('image/'))
+        if (imageType) {
+          const blob = await item.getType(imageType)
+          await addImageAnnotation(blob)
+          break
+        }
+      }
+    } catch (error) {
+      console.error('从剪贴板读取图片失败:', error)
+    }
+  }
+}
+
+
+// 处理图形工具选择
+const handleShapeSelect = (key) => {
+  editingMode.value = 'shape'
+  currentShape.value = key
+
+  const container = document.querySelector('.pages-container')
+  if (container) {
+    container.style.cursor = 'crosshair'
+    // 添加图形绘制事件监听器
+    setupShapeListeners()
+  }
+}
+
+// 设置图形绘制事件监听器
+const setupShapeListeners = () => {
+  const container = document.querySelector('.pages-container')
+  if (container) {
+    container.addEventListener('mousedown', startShapeDrawing)
+    container.addEventListener('mousemove', drawShape)
+    container.addEventListener('mouseup', stopShapeDrawing)
+    container.addEventListener('mouseleave', stopShapeDrawing)
+  }
+}
+
+// 移除图形绘制事件监听器
+const removeShapeListeners = () => {
+  const container = document.querySelector('.pages-container')
+  if (container) {
+    container.removeEventListener('mousedown', startShapeDrawing)
+    container.removeEventListener('mousemove', drawShape)
+    container.removeEventListener('mouseup', stopShapeDrawing)
+    container.removeEventListener('mouseleave', stopShapeDrawing)
+  }
+}
+
+
+// 图形绘制相关状态
+const shapeStart = ref(null)
+const shapeEnd = ref(null)
+const isDrawingShape = ref(false)
+
+// 开始绘制图形
+const startShapeDrawing = (e) => {
+  if (editingMode.value !== 'shape') return
+
+  isDrawingShape.value = true
+  const { offsetX, offsetY } = e
+  shapeStart.value = { x: offsetX, y: offsetY }
+  shapeEnd.value = { x: offsetX, y: offsetY }
+
+  // 创建新的离屏画布并保存原始内容
+  const canvas = document.querySelector('.page-canvas')
+  if (canvas) {
+    offscreenCanvas.value = document.createElement('canvas')
+    offscreenCanvas.value.width = canvas.width
+    offscreenCanvas.value.height = canvas.height
+    const ctx = offscreenCanvas.value.getContext('2d')
+    ctx.drawImage(canvas, 0, 0)
+  }
+}
+
+// 绘制图形过程
+const drawShape = (e) => {
+  if (!isDrawingShape.value) return
+
+  const { offsetX, offsetY } = e
+  shapeEnd.value = { x: offsetX, y: offsetY }
+  renderShapePreview()
+}
+
+// 添加一个状态来跟踪是否需要保存
+const needsSaving = ref(false)
+
+// 修改 stopShapeDrawing 函数
+const stopShapeDrawing = async () => {
+  if (!isDrawingShape.value) return
+
+  isDrawingShape.value = false
+  if (shapeStart.value && shapeEnd.value) {
+    try {
+      // 获取当前文档的二进制数据
+      const existingPdfBytes = await currentPdf.value.getData()
+      const pdfDoc = await PDFDocument.load(existingPdfBytes)
+      const pages = pdfDoc.getPages()
+      const page = pages[currentPage.value]
+      const { width, height } = page.getSize()
+      const canvas = document.querySelector('.page-canvas')
+      const scale = width / canvas.width
+
+      const pdfStart = {
+        x: shapeStart.value.x * scale,
+        y: height - (shapeStart.value.y * scale)
+      }
+      const pdfEnd = {
+        x: shapeEnd.value.x * scale,
+        y: height - (shapeEnd.value.y * scale)
+      }
+
+      switch (currentShape.value) {
+        case 'rectangle':
+          const width = Math.abs(pdfEnd.x - pdfStart.x)
+          const height = Math.abs(pdfEnd.y - pdfStart.y)
+          page.drawRectangle({
+            x: Math.min(pdfStart.x, pdfEnd.x),
+            y: Math.min(pdfStart.y, pdfEnd.y),
+            width: width,
+            height: height,
+            borderColor: rgb(0, 0, 0),
+            borderWidth: 2 * scale
+          })
+          break
+
+        case 'circle':
+          const radius = Math.sqrt(
+            Math.pow(pdfEnd.x - pdfStart.x, 2) +
+            Math.pow(pdfEnd.y - pdfStart.y, 2)
+          ) / 2
+          const centerX = (pdfStart.x + pdfEnd.x) / 2
+          const centerY = (pdfStart.y + pdfEnd.y) / 2
+          page.drawCircle({
+            x: centerX,
+            y: centerY,
+            size: radius,
+            borderColor: rgb(0, 0, 0),
+            borderWidth: 2 * scale
+          })
+          break
+
+        case 'line':
+          page.drawLine({
+            start: { x: pdfStart.x, y: pdfStart.y },
+            end: { x: pdfEnd.x, y: pdfEnd.y },
+            thickness: 2 * scale,
+            color: rgb(0, 0, 0)
+          })
+          break
+
+        case 'arrow':
+          // 绘制主线
+          page.drawLine({
+            start: { x: pdfStart.x, y: pdfStart.y },
+            end: { x: pdfEnd.x, y: pdfEnd.y },
+            thickness: 2 * scale,
+            color: rgb(0, 0, 0)
+          })
+
+          // 计算箭头
+          const headLength = 15 * scale
+          const angle = Math.atan2(pdfEnd.y - pdfStart.y, pdfEnd.x - pdfStart.x)
+
+          // 绘制箭头两边
+          page.drawLine({
+            start: { x: pdfEnd.x, y: pdfEnd.y },
+            end: {
+              x: pdfEnd.x - headLength * Math.cos(angle - Math.PI / 6),
+              y: pdfEnd.y - headLength * Math.sin(angle - Math.PI / 6)
+            },
+            thickness: 2 * scale,
+            color: rgb(0, 0, 0)
+          })
+
+          page.drawLine({
+            start: { x: pdfEnd.x, y: pdfEnd.y },
+            end: {
+              x: pdfEnd.x - headLength * Math.cos(angle + Math.PI / 6),
+              y: pdfEnd.y - headLength * Math.sin(angle + Math.PI / 6)
+            },
+            thickness: 2 * scale,
+            color: rgb(0, 0, 0)
+          })
+          break
+      }
+
+      // 保存修改后的文档
+      const modifiedPdfBytes = await pdfDoc.save()
+
+      // 更新当前文档，但不触发页面重新渲染
+      currentPdf.value = await pdfjsLib.getDocument({ data: modifiedPdfBytes }).promise
+      currDoc = currentPdf.value
+
+      // 标记需要保存
+      needsSaving.value = true
+
+    } catch (error) {
+      console.error('保存图形到 PDF 时发生错误:', error)
+      dialog.error({
+        title: '错误',
+        content: '保存图形时发生错误，请重试',
+        positiveText: '确定'
+      })
+    }
+  }
+
+  // 清理状态
+  shapeStart.value = null
+  shapeEnd.value = null
+  offscreenCanvas.value = null
+
+  // 移除图形绘制事件监听器
+  removeShapeListeners()
+
+  // 恢复默认光标
+  const container = document.querySelector('.pages-container')
+  if (container) {
+    container.style.cursor = 'default'
+  }
+}
+
+
+// 添加离屏画布引用
+const offscreenCanvas = ref(null)
+
+// 图形预览渲染函数
+const renderShapePreview = () => {
+  if (!shapeStart.value || !shapeEnd.value) return
+
+  const canvas = document.querySelector('.page-canvas')
+  if (!canvas) return
+
+  // 创建或更新离屏画布
+  if (!offscreenCanvas.value) {
+    offscreenCanvas.value = document.createElement('canvas')
+    offscreenCanvas.value.width = canvas.width
+    offscreenCanvas.value.height = canvas.height
+
+    // 保存原始页面内容到离屏画布
+    const ctx = offscreenCanvas.value.getContext('2d')
+    ctx.drawImage(canvas, 0, 0)
+  }
+
+  // 获取主画布上下文
+  const mainCtx = canvas.getContext('2d')
+
+  // 清除主画布
+  mainCtx.clearRect(0, 0, canvas.width, canvas.height)
+
+  // 恢复原始页面内容
+  mainCtx.drawImage(offscreenCanvas.value, 0, 0)
+
+  // 绘制新的图形
+  mainCtx.save()
+  mainCtx.strokeStyle = '#000000'
+  mainCtx.lineWidth = 2
+
+  switch (currentShape.value) {
+    case 'rectangle':
+      drawRectangle(mainCtx, shapeStart.value, shapeEnd.value)
+      break
+    case 'circle':
+      drawCircle(mainCtx, shapeStart.value, shapeEnd.value)
+      break
+    case 'arrow':
+      drawArrow(mainCtx, shapeStart.value, shapeEnd.value)
+      break
+    case 'line':
+      drawLine(mainCtx, shapeStart.value, shapeEnd.value)
+      break
+  }
+
+  mainCtx.restore()
+}
+
+// 绘制矩形
+const drawRectangle = (ctx, start, end) => {
+  const width = end.x - start.x
+  const height = end.y - start.y
+  ctx.strokeRect(start.x, start.y, width, height)
+}
+
+// 绘制圆形
+const drawCircle = (ctx, start, end) => {
+  const radius = Math.sqrt(
+    Math.pow(end.x - start.x, 2) +
+    Math.pow(end.y - start.y, 2)
+  ) / 2
+  const centerX = (start.x + end.x) / 2
+  const centerY = (start.y + end.y) / 2
+
+  ctx.beginPath()
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
+  ctx.stroke()
+}
+
+// 绘制箭头
+const drawArrow = (ctx, start, end) => {
+  const headLength = 15
+  const angle = Math.atan2(end.y - start.y, end.x - start.x)
+
+  ctx.beginPath()
+  ctx.moveTo(start.x, start.y)
+  ctx.lineTo(end.x, end.y)
+
+  ctx.lineTo(
+    end.x - headLength * Math.cos(angle - Math.PI / 6),
+    end.y - headLength * Math.sin(angle - Math.PI / 6)
+  )
+  ctx.moveTo(end.x, end.y)
+  ctx.lineTo(
+    end.x - headLength * Math.cos(angle + Math.PI / 6),
+    end.y - headLength * Math.sin(angle + Math.PI / 6)
+  )
+  ctx.stroke()
+}
+
+// 绘制直线
+const drawLine = (ctx, start, end) => {
+  ctx.beginPath()
+  ctx.moveTo(start.x, start.y)
+  ctx.lineTo(end.x, end.y)
+  ctx.stroke()
+}
+
+// 切换手写模式
+const toggleDrawingMode = () => {
+  editingMode.value = editingMode.value === 'drawing' ? 'none' : 'drawing'
+  isDrawing.value = false
+
+  const container = document.querySelector('.pages-container')
+  if (editingMode.value === 'drawing') {
+    container.style.cursor = 'crosshair'
+    // 添加绘图事件监听器
+    setupDrawingListeners()
+  } else {
+    container.style.cursor = 'default'
+    // 移除绘图事件监听器
+    removeDrawingListeners()
+  }
+}
+
+
+// 设置绘图事件监听器
+const setupDrawingListeners = () => {
+  const container = document.querySelector('.pages-container')
+
+  container.addEventListener('mousedown', startDrawing)
+  container.addEventListener('mousemove', draw)
+  container.addEventListener('mouseup', stopDrawing)
+  container.addEventListener('mouseleave', stopDrawing)
+}
+
+// 移除绘图事件监听器
+const removeDrawingListeners = () => {
+  const container = document.querySelector('.pages-container')
+
+  container.removeEventListener('mousedown', startDrawing)
+  container.removeEventListener('mousemove', draw)
+  container.removeEventListener('mouseup', stopDrawing)
+  container.removeEventListener('mouseleave', stopDrawing)
+}
+
+// 修改开始绘制函数，初始化离屏画布
+const startDrawing = (e) => {
+  if (editingMode.value !== 'drawing') return
+
+  isDrawing.value = true
+  const { offsetX, offsetY } = e
+  currentDrawingPath.value = [[offsetX, offsetY]]
+
+  // 创建新的离屏画布并保存原始内容
+  const canvas = document.querySelector('.page-canvas')
+  if (canvas) {
+    offscreenCanvas.value = document.createElement('canvas')
+    offscreenCanvas.value.width = canvas.width
+    offscreenCanvas.value.height = canvas.height
+    const ctx = offscreenCanvas.value.getContext('2d')
+    ctx.drawImage(canvas, 0, 0)
+  }
+}
+
+// 绘制过程
+const draw = (e) => {
+  if (!isDrawing.value) return
+
+  const { offsetX, offsetY } = e
+  currentDrawingPath.value.push([offsetX, offsetY])
+  renderCurrentPath()
+}
+
+// 修改停止绘制函数，添加保存到 PDF 的逻辑
+const stopDrawing = async () => {
+  if (!isDrawing.value) return
+
+  isDrawing.value = false
+  if (currentDrawingPath.value.length > 1) {
+    try {
+      // 获取当前文档的二进制数据
+      const existingPdfBytes = await currentPdf.value.getData()
+      const pdfDoc = await PDFDocument.load(existingPdfBytes)
+      const pages = pdfDoc.getPages()
+      const page = pages[currentPage.value]
+      const { width, height } = page.getSize()
+      const canvas = document.querySelector('.page-canvas')
+      const scale = width / canvas.width
+
+      // 转换路径坐标到 PDF 坐标系统
+      const pdfPath = currentDrawingPath.value.map(([x, y]) => ({
+        x: x * scale,
+        y: height - (y * scale) // PDF 坐标系统的 y 轴从底部向上
+      }))
+
+      // 在 PDF 中绘制路径
+      for (let i = 1; i < pdfPath.length; i++) {
+        page.drawLine({
+          start: pdfPath[i - 1],
+          end: pdfPath[i],
+          thickness: 2 * scale,
+          color: rgb(0, 0, 0),
+          opacity: 1
+        })
+      }
+
+      // 保存修改后的文档
+      const modifiedPdfBytes = await pdfDoc.save()
+
+      // 更新当前文档，但不触发页面重新渲染
+      currentPdf.value = await pdfjsLib.getDocument({ data: modifiedPdfBytes }).promise
+      currDoc = currentPdf.value
+
+      // 标记需要保存
+      needsSaving.value = true
+
+    } catch (error) {
+      console.error('保存手写内容到 PDF 时发生错误:', error)
+      dialog.error({
+        title: '错误',
+        content: '保存手写内容时发生错误，请重试',
+        positiveText: '确定'
+      })
+    }
+  }
+
+  currentDrawingPath.value = []
+}
+
+// 修改渲染当前路径函数，使用离屏画布
+const renderCurrentPath = () => {
+  if (!currentDrawingPath.value.length) return
+
+  const canvas = document.querySelector('.page-canvas')
+  if (!canvas) return
+
+  // 创建或更新离屏画布
+  if (!offscreenCanvas.value) {
+    offscreenCanvas.value = document.createElement('canvas')
+    offscreenCanvas.value.width = canvas.width
+    offscreenCanvas.value.height = canvas.height
+    const ctx = offscreenCanvas.value.getContext('2d')
+    ctx.drawImage(canvas, 0, 0)
+  }
+
+  // 获取主画布上下文
+  const mainCtx = canvas.getContext('2d')
+
+  // 清除主画布
+  mainCtx.clearRect(0, 0, canvas.width, canvas.height)
+
+  // 恢复原始页面内容
+  mainCtx.drawImage(offscreenCanvas.value, 0, 0)
+
+  // 绘制当前路径
+  mainCtx.save()
+  mainCtx.strokeStyle = '#000000'
+  mainCtx.lineWidth = 2
+  mainCtx.lineCap = 'round'
+  mainCtx.lineJoin = 'round'
+
+  mainCtx.beginPath()
+  mainCtx.moveTo(...currentDrawingPath.value[0])
+
+  for (let i = 1; i < currentDrawingPath.value.length; i++) {
+    mainCtx.lineTo(...currentDrawingPath.value[i])
+  }
+
+  mainCtx.stroke()
+  mainCtx.restore()
+}
+
+// 添加文本注释
+const addTextAnnotation = (text, style) => {
+  annotations.value.push({
+    type: 'text',
+    content: text,
+    style,
+    position: { x: 100, y: 100 } // 默认位置，可拖动调整
+  })
+  renderAnnotations()
+}
+
+// 添加图片注释
+const addImageAnnotation = async (imageFile) => {
+  try {
+    const url = URL.createObjectURL(imageFile)
+    annotations.value.push({
+      type: 'image',
+      url,
+      position: { x: 100, y: 100 }, // 默认位置，可拖动调整
+      size: { width: 200, height: 200 } // 默认尺寸，可调整
+    })
+    renderAnnotations()
+  } catch (error) {
+    console.error('添加图片注释失败:', error)
+  }
+}
+
+// 渲染所有注释
+const renderAnnotations = () => {
+  // 在这里实现注释的渲染逻辑
+  // 可以使用 canvas 或创建 DOM 元素来显示注释
 }
 
 // 添加缩略图引用
@@ -1185,7 +1820,7 @@ const handleDeletePage = () => {
 
 // 处理保存文件
 const handleSaveFile = async () => {
-  if (!currDoc) return
+  if (!currDoc || !needsSaving.value) return
 
   try {
     // 获取当前文档的二进制数据
@@ -1211,6 +1846,8 @@ const handleSaveFile = async () => {
     // 清理
     window.URL.revokeObjectURL(url)
     document.body.removeChild(link)
+    // 重置保存标记
+    needsSaving.value = false
   } catch (error) {
     console.error('保存文件时发生错误:', error)
   }
@@ -1356,6 +1993,10 @@ const renderThumbnails = async () => {
 onUnmounted(() => {
   pageObserver.value?.disconnect()
   thumbnailObserver.value?.disconnect()
+  removeDrawingListeners()
+  removeShapeListeners()
+  offscreenCanvas.value = null
+
 })
 
 // 添加缓存机制
@@ -1481,10 +2122,51 @@ const renderingQueue = new Set()
           0 16px 32px rgba(0, 0, 0, 0.1);
       }
     }
+
+    .annotations-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+
+      &.active {
+        pointer-events: auto;
+      }
+
+      .text-annotation {
+        position: absolute;
+        cursor: move;
+        padding: 4px;
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid #ccc;
+        border-radius: 2px;
+      }
+
+      .image-annotation {
+        position: absolute;
+        cursor: move;
+
+        img {
+          max-width: 100%;
+          height: auto;
+        }
+
+        .resize-handle {
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          background: #fff;
+          border: 1px solid #333;
+        }
+      }
+    }
   }
 }
 
 .empty-state {
+  padding: 48px;
   height: 100%;
   display: flex;
   justify-content: center;
