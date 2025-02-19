@@ -133,7 +133,8 @@
       </n-layout>
     </n-layout>
   </div>
-  <n-modal v-model:show="showCreatePageModal" preset="card" title="新建空白页面" style="width: 400px">
+  <!-- 修改模态框部分 -->
+  <n-modal v-model:show="showCreatePageModal" preset="card" title="新建图片页面" style="width: 400px">
     <n-form ref="formRef" :model="formValue" :rules="rules">
       <n-form-item label="插入位置" path="position">
         <n-radio-group v-model:value="formValue.position">
@@ -149,6 +150,22 @@
       </n-form-item>
       <n-form-item label="页面大小" path="pageSize">
         <n-select v-model:value="formValue.pageSize" :options="pageSizeOptions" />
+      </n-form-item>
+      <n-form-item label="上传图片" path="image">
+        <n-upload
+          accept="image/*"
+          :max="1"
+          :default-upload="false"
+          @change="handleImageChange"
+        >
+          <n-button>选择图片</n-button>
+        </n-upload>
+      </n-form-item>
+      <n-form-item label="图片拟合" path="imageFit">
+        <n-radio-group v-model:value="formValue.imageFit">
+          <n-radio key="contain" value="contain">保持比例</n-radio>
+          <n-radio key="fill" value="fill">填充页面</n-radio>
+        </n-radio-group>
       </n-form-item>
     </n-form>
     <template #footer>
@@ -671,7 +688,9 @@ const formRef = ref(null)
 const formValue = reactive({
   position: 'after',
   orientation: 'portrait',
-  pageSize: 'A4'
+  pageSize: 'A4',
+  imageFit: 'contain',
+  imageFile: null
 })
 
 // 页面大小选项
@@ -699,16 +718,22 @@ const rules = {
   }
 }
 
-// 处理创建空白页面
+// 处理图片选择
+const handleImageChange = ({ file }) => {
+  if (file.file) {
+    formValue.imageFile = file.file
+  }
+}
+
+// 修改处理创建页面的函数
 const handleCreatePage = async () => {
   if (!currDoc) return
 
   try {
     creating.value = true
 
-    // 先获取当前文档的二进制数据
-    // const existingPdfBytes = await currentPdf.value.getData()
-    const existingPdfBytes = await currDoc.getData()
+    // 获取当前文档的二进制数据
+    const existingPdfBytes = await currentPdf.value.getData()
 
     // 使用 pdf-lib 加载当前文档
     const pdfDoc = await PDFDocument.load(existingPdfBytes)
@@ -716,7 +741,7 @@ const handleCreatePage = async () => {
     // 获取页面尺寸
     let pageSize = PageSizes[formValue.pageSize]
     if (formValue.orientation === 'landscape') {
-      pageSize = [pageSize[1], pageSize[0]] // 交换宽高实现横向
+      pageSize = [pageSize[1], pageSize[0]]
     }
 
     // 在指定位置插入空白页
@@ -725,66 +750,81 @@ const handleCreatePage = async () => {
       currentPage.value + 1
 
     const newPage = pdfDoc.insertPage(insertIndex, pageSize)
-    console.log('newPage', newPage)
-    console.log('pdfDoc', pdfDoc)
-    currDoc = pdfDoc
+
+    // 如果有上传图片，则处理图片
+    if (formValue.imageFile) {
+      try {
+        // 读取图片文件
+        const imageData = await new Promise((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(new Uint8Array(reader.result))
+          reader.readAsArrayBuffer(formValue.imageFile)
+        })
+
+        // 根据文件类型嵌入图片
+        let image
+        const fileType = formValue.imageFile.type
+        if (fileType === 'image/jpeg') {
+          image = await pdfDoc.embedJpg(imageData)
+        } else if (fileType === 'image/png') {
+          image = await pdfDoc.embedPng(imageData)
+        } else {
+          throw new Error('不支持的图片格式')
+        }
+
+        // 计算图片绘制尺寸和位置
+        const { width: pageWidth, height: pageHeight } = newPage.getSize()
+        let drawWidth = image.width
+        let drawHeight = image.height
+        let x = 0
+        let y = 0
+
+        if (formValue.imageFit === 'contain') {
+          // 保持比例
+          const scale = Math.min(
+            pageWidth / image.width,
+            pageHeight / image.height
+          )
+          drawWidth = image.width * scale
+          drawHeight = image.height * scale
+          x = (pageWidth - drawWidth) / 2
+          y = (pageHeight - drawHeight) / 2
+        } else {
+          // 填充页面
+          drawWidth = pageWidth
+          drawHeight = pageHeight
+        }
+
+        // 绘制图片
+        newPage.drawImage(image, {
+          x,
+          y,
+          width: drawWidth,
+          height: drawHeight
+        })
+      } catch (error) {
+        console.error('处理图片时发生错误:', error)
+        throw error
+      }
+    }
+
     // 保存修改后的文档
     const modifiedPdfBytes = await pdfDoc.save()
     await handleDocUpdate(modifiedPdfBytes, insertIndex)
-    /* // 清理现有状态
-    canvasRefs.value = {}
-    thumbnailRefs.value = {}
-    pageRenderLocks.clear()
-    renderingQueue.clear()
-    renderingLocks.clear()
-
-    // 清空缩略图容器
-    if (thumbnailsRef.value) {
-      thumbnailsRef.value.innerHTML = ''
-    }
-
-    // 清空主视图容器
-    const pagesContainer = document.querySelector('.pages-container')
-    if (pagesContainer) {
-      pagesContainer.innerHTML = ''
-    }
-
-    // 断开现有观察器
-    pageObserver.value?.disconnect()
-    thumbnailObserver.value?.disconnect()
-
-
-    // 重新加载修改后的文档
-    const loadingTask = pdfjsLib.getDocument({ data: modifiedPdfBytes })
-    const newPdfDoc = await loadingTask.promise
-
-    // 更新当前文档
-    currentPdf.value = newPdfDoc
-    currDoc = newPdfDoc
-    pagesData.value = Array(newPdfDoc.numPages).fill(null)
-
-    // 重新渲染所有页面
-    await nextTick()
-
-    // 初始化新的观察器
-    initObservers()
-
-    // 重新渲染缩略图
-    await renderThumbnails()
-
-    // 重新渲染主视图
-    await renderPages() */
 
     // 滚动到插入的新页面
     await selectPage(insertIndex)
 
     showCreatePageModal.value = false
   } catch (error) {
-    console.error('创建空白页面时发生错误:', error)
+    console.error('创建图片页面时发生错误:', error)
   } finally {
     creating.value = false
+    // 清理图片文件
+    formValue.imageFile = null
   }
 }
+
 // 添加缩略图引用
 const thumbnailsRef = ref(null)
 const thumbnailRefs = ref({})
