@@ -210,12 +210,12 @@ const pagesCanvasRefs = ref({})
 
 const zoomIn = () => {
   currentScale.value = Math.min(currentScale.value * 1.2, 5)
-  renderPage(currentPage.value)
+  // renderPage(currentPage.value)
 }
 
 const zoomOut = () => {
   currentScale.value = Math.max(currentScale.value / 1.2, 0.2)
-  renderPage(currentPage.value)
+  // renderPage(currentPage.value)
 }
 
 const handleScaleSelect = async (key) => {
@@ -238,7 +238,7 @@ const handleScaleSelect = async (key) => {
       currentScale.value = parseInt(key) / 100
   }
 
-  renderPage(currentPage.value)
+  // renderPage(currentPage.value)
 }
 
 const handleFileChange = async ({ file }) => {
@@ -251,11 +251,11 @@ const handleFileChange = async ({ file }) => {
     currDoc = null
     pagesData.value = []
     currentPage.value = 0
-    
+
     // 清理缩略图相关状态
     canvasRefs.value = {}
     thumbnailRefs.value = {}
-    
+
     // 清空缩略图容器
     if (thumbnailsRef.value) {
       thumbnailsRef.value.innerHTML = ''
@@ -308,6 +308,68 @@ const handleFileChange = async ({ file }) => {
     }
 
     reader.readAsArrayBuffer(file.file)
+
+  } catch (error) {
+    console.error('处理文件时发生错误:', error)
+  }
+}
+
+
+const handleDocUpdate = async (pdfDocBuff, goto = 0) => {
+  if (!pdfDocBuff) return
+
+  try {
+    // 清理现有状态
+    currentPdf.value = null
+    currDoc = null
+    pagesData.value = []
+    currentPage.value = 0
+
+    // 清理缩略图相关状态
+    canvasRefs.value = {}
+    thumbnailRefs.value = {}
+
+    // 清空缩略图容器
+    if (thumbnailsRef.value) {
+      thumbnailsRef.value.innerHTML = ''
+    }
+
+    // 清空主视图容器
+    const pagesContainer = document.querySelector('.pages-container')
+    if (pagesContainer) {
+      pagesContainer.innerHTML = ''
+    }
+
+    // 断开现有观察器
+    pageObserver.value?.disconnect()
+    thumbnailObserver.value?.disconnect()
+
+    try {
+      const loadingTask = pdfjsLib.getDocument({ data: pdfDocBuff })
+      const pdfDoc = await loadingTask.promise
+      // 设置新文档
+      currentPdf.value = pdfDoc
+      currDoc = pdfDoc
+      pagesData.value = Array(pdfDoc.numPages).fill(null)
+
+      // 等待 DOM 更新
+      await nextTick()
+
+      // 初始化新的观察器
+      initObservers()
+
+      // 重新渲染缩略图
+      await renderThumbnails()
+
+      // 渲染主视图
+      await renderPages()
+
+      // 选择第一页
+      await selectPage(goto)
+
+    } catch (error) {
+      console.error('加载PDF文件时发生错误:', error)
+    }
 
   } catch (error) {
     console.error('处理文件时发生错误:', error)
@@ -537,12 +599,15 @@ onMounted(() => {
 
   const container = document.querySelector('.viewer')
   if (container) {
+    console.log('container', container)
     resizeObserver.observe(container)
   }
 
   const viewer = document.querySelector('.viewer')
+  console.log('viewer', viewer)
   if (viewer) {
     viewer.addEventListener('scroll', () => {
+      console.log('Scroll event triggered')
       if (!continuousScroll.value || isScrolling) return
 
       const container = viewer.getBoundingClientRect()
@@ -634,82 +699,92 @@ const rules = {
   }
 }
 
-// 修改 handleCreatePage 函数
+// 处理创建空白页面
 const handleCreatePage = async () => {
   if (!currDoc) return
 
   try {
     creating.value = true
 
-    // 获取当前文档的二进制数据
-    const existingPdfBytes = await currentPdf.value.getData()
+    // 先获取当前文档的二进制数据
+    // const existingPdfBytes = await currentPdf.value.getData()
+    const existingPdfBytes = await currDoc.getData()
 
-    // 使用 pdf-lib 创建新文档
+    // 使用 pdf-lib 加载当前文档
     const pdfDoc = await PDFDocument.load(existingPdfBytes)
 
     // 获取页面尺寸
     let pageSize = PageSizes[formValue.pageSize]
     if (formValue.orientation === 'landscape') {
-      pageSize = [pageSize[1], pageSize[0]]
+      pageSize = [pageSize[1], pageSize[0]] // 交换宽高实现横向
     }
 
-    // 插入空白页
+    // 在指定位置插入空白页
     const insertIndex = formValue.position === 'before' ?
       currentPage.value :
       currentPage.value + 1
 
-    pdfDoc.insertPage(insertIndex, pageSize)
-
+    const newPage = pdfDoc.insertPage(insertIndex, pageSize)
+    console.log('newPage', newPage)
+    console.log('pdfDoc', pdfDoc)
+    currDoc = pdfDoc
     // 保存修改后的文档
     const modifiedPdfBytes = await pdfDoc.save()
-
-    // 重新加载修改后的文档
-    const loadingTask = pdfjsLib.getDocument({ data: modifiedPdfBytes })
-    currentPdf.value = await loadingTask.promise
-    currDoc = currentPdf.value
-
-    // 更新页面数组
-    pagesData.value = Array(currDoc.numPages).fill(null)
-
-    // 重置渲染状态
+    await handleDocUpdate(modifiedPdfBytes, insertIndex)
+    /* // 清理现有状态
     canvasRefs.value = {}
     thumbnailRefs.value = {}
+    pageRenderLocks.clear()
+    renderingQueue.clear()
+    renderingLocks.clear()
 
-    // 清理观察器
-    pageObserver.value?.disconnect()
-    thumbnailObserver.value?.disconnect()
-
-    // 等待 DOM 更新
-    await nextTick()
-
-    // 重新初始化观察器
-    initObservers()
-
-    // 清空容器
+    // 清空缩略图容器
     if (thumbnailsRef.value) {
       thumbnailsRef.value.innerHTML = ''
     }
 
+    // 清空主视图容器
     const pagesContainer = document.querySelector('.pages-container')
     if (pagesContainer) {
       pagesContainer.innerHTML = ''
     }
 
-    // 重新渲染
-    await renderThumbnails()
-    await renderPages()
+    // 断开现有观察器
+    pageObserver.value?.disconnect()
+    thumbnailObserver.value?.disconnect()
 
-    // 关闭模态框并选择新页面
-    showCreatePageModal.value = false
+
+    // 重新加载修改后的文档
+    const loadingTask = pdfjsLib.getDocument({ data: modifiedPdfBytes })
+    const newPdfDoc = await loadingTask.promise
+
+    // 更新当前文档
+    currentPdf.value = newPdfDoc
+    currDoc = newPdfDoc
+    pagesData.value = Array(newPdfDoc.numPages).fill(null)
+
+    // 重新渲染所有页面
+    await nextTick()
+
+    // 初始化新的观察器
+    initObservers()
+
+    // 重新渲染缩略图
+    await renderThumbnails()
+
+    // 重新渲染主视图
+    await renderPages() */
+
+    // 滚动到插入的新页面
     await selectPage(insertIndex)
 
+    showCreatePageModal.value = false
   } catch (error) {
     console.error('创建空白页面时发生错误:', error)
   } finally {
     creating.value = false
   }
 }
-
 // 添加缩略图引用
 const thumbnailsRef = ref(null)
 const thumbnailRefs = ref({})
