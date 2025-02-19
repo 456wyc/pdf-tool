@@ -479,6 +479,16 @@ const getVisiblePageIndexes = () => {
 const selectPage = async (index) => {
   currentPage.value = index
 
+  // 更新所有缩略图的 active 状态
+  const thumbnails = document.querySelectorAll('.thumbnail')
+  thumbnails.forEach((thumbnail, i) => {
+    if (i === index) {
+      thumbnail.classList.add('active')
+    } else {
+      thumbnail.classList.remove('active')
+    }
+  })
+
   if (continuousScroll.value) {
     // 连续滚动模式下，滚动到对应页面
     const container = document.querySelector('.pages-container')
@@ -540,6 +550,16 @@ onMounted(() => {
       if (currentVisibleIndex !== -1 && currentVisibleIndex !== currentPage.value) {
         // 更新当前页码
         currentPage.value = currentVisibleIndex
+
+        // 更新所有缩略图的 active 状态
+        const thumbnails = document.querySelectorAll('.thumbnail')
+        thumbnails.forEach((thumbnail, i) => {
+          if (i === currentVisibleIndex) {
+            thumbnail.classList.add('active')
+          } else {
+            thumbnail.classList.remove('active')
+          }
+        })
 
         // 滚动缩略图到对应位置
         const thumbnail = thumbnailRefs.value[currentVisibleIndex]
@@ -816,7 +836,10 @@ const renderThumbnails = async () => {
     for (let i = 0; i < currDoc.numPages; i++) {
       const thumbnail = document.createElement('div')
       thumbnail.className = 'thumbnail'
-      thumbnail.classList.toggle('active', currentPage.value === i)
+      // 确保初始状态正确
+      if (currentPage.value === i) {
+        thumbnail.classList.add('active')
+      }
       thumbnail.dataset.pageIndex = i
 
       const canvas = document.createElement('canvas')
