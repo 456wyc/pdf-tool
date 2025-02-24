@@ -2139,14 +2139,15 @@ const handleDeletePage = () => {
 
 // 处理保存文件
 const handleSaveFile = async () => {
-  if (!currDoc || !needsSaving.value) return
+  if (!currDoc) return
 
   try {
     // 获取当前文档的二进制数据
-    const existingPdfBytes = await currentPdf.value.getData()
+    const pdfDoc = await PDFDocument.load(await currentPdf.value.getData())
+    const modifiedPdfBytes = await pdfDoc.save()
 
     // 创建 Blob 对象
-    const blob = new Blob([existingPdfBytes], { type: 'application/pdf' })
+    const blob = new Blob([modifiedPdfBytes], { type: 'application/pdf' })
 
     // 创建下载链接
     const url = window.URL.createObjectURL(blob)
@@ -2169,6 +2170,11 @@ const handleSaveFile = async () => {
     needsSaving.value = false
   } catch (error) {
     console.error('保存文件时发生错误:', error)
+    dialog.error({
+      title: '错误',
+      content: '保存文件时发生错误，请重试',
+      positiveText: '确定'
+    })
   }
 }
 
