@@ -14,11 +14,18 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ["pdfjs-dist"],
+    include: ["pdfjs-dist", "pako"],
   },
   build: {
     commonjsOptions: {
-      include: [/pdfjs-dist/],
+      include: [/pdfjs-dist/, /node_modules\/pako/],
     },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'pdf-lib': ['@pdf-lib/standard-fonts']
+        }
+      }
+    }
   },
 });
