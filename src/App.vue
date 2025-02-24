@@ -66,7 +66,7 @@
                 </n-button>
               </n-button-group>
               <!-- 页面编辑组 -->
-              <n-button-group>
+              <n-button-group v-show="false">
                 <!-- 文字工具 -->
                 <n-dropdown :options="textOptions" :disabled="!currentPdf" trigger="hover" @select="handleTextSelect">
                   <n-button ghost>
