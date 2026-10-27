@@ -50,6 +50,8 @@ pnpm build
 pnpm preview
 ```
 
+> 仓库中的 `pnpm-workspace.yaml` 是 pnpm 9+ 所必需的（否则 pnpm 会报 `packages field missing or empty`），其中同时声明了 esbuild 的构建脚本白名单，避免安装时报 `ERR_PNPM_IGNORED_BUILDS`。
+
 ## 部署到 GitHub Pages
 
 项目已内置 GitHub Actions 工作流（`.github/workflows/deploy.yml`），推送代码到 `main` 分支即可自动构建并发布到 GitHub Pages。
