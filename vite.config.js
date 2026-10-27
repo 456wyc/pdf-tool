@@ -4,6 +4,7 @@ import path from "path";
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "./",
   plugins: [vue()],
   resolve: {
     alias: {
@@ -19,13 +20,6 @@ export default defineConfig({
   build: {
     commonjsOptions: {
       include: [/pdfjs-dist/, /node_modules\/pako/],
-    },
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'pdf-lib': ['@pdf-lib/standard-fonts']
-        }
-      }
     }
   },
 });
