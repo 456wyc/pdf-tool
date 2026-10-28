@@ -54,7 +54,7 @@ pnpm preview
 
 ## 部署到 GitHub Pages
 
-项目已内置 GitHub Actions 工作流（`.github/workflows/deploy.yml`），推送代码到 `main` 分支即可自动构建并发布到 GitHub Pages。
+项目已内置 GitHub Actions 工作流（`.github/workflows/deploy.yml`），推送代码到默认分支（`main` 或 `master`）即可自动构建并发布到 GitHub Pages。
 
 步骤：
 
